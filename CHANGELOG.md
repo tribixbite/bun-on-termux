@@ -2,6 +2,33 @@
 
 All notable changes to Bun on Termux will be documented in this file.
 
+## [1.1.2] - 2025-08-18
+
+### New Features
+- **Official Binary Support**: Instructions for downloading official Bun releases
+- **Automated Download Script**: `scripts/download-official-bun.sh` for easy official binary installation
+- **Binary Compatibility Guide**: Complete guide covering different binary sources
+- **Version Compatibility Matrix**: Known working and problematic versions
+- **Advanced Testing**: Comprehensive compatibility testing procedures
+
+### Documentation Additions
+- **NEW**: `docs/BINARY-COMPATIBILITY.md` - Complete binary source comparison
+- **ENHANCED**: Installation guide with official binary options
+- **IMPROVED**: README with both included and official binary instructions
+- **ADDED**: Troubleshooting for official binary issues
+
+### Scripts and Tools
+- **NEW**: Automated official binary downloader with testing and backup
+- **SAFETY**: Automatic backup/restore functionality
+- **TESTING**: Built-in compatibility verification
+- **ERROR HANDLING**: Comprehensive error messages and recovery
+
+### User Options
+- **Choice**: Users can now choose between included (stable) or official (latest) binaries
+- **Flexibility**: Multiple installation methods for different preferences
+- **Safety**: Backup and restore mechanisms for safe binary updates
+- **Documentation**: Clear guidance on when to use each option
+
 ## [1.1.1] - 2025-08-18
 
 ### Documentation Fixes

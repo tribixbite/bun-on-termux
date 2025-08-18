@@ -106,10 +106,71 @@ bun --version
 
 ## Binary Sources
 
-### Included Binary
+### Option 1: Included Binary (Recommended)
 The repository includes a working ARM64 binary (`buno`) that's compatible with glibc-runner.
 
-### Building from Source (Advanced)
+### Option 2: Official Bun Releases
+If you prefer to obtain the binary from official sources:
+
+#### Download Official ARM64 Binary
+```bash
+# Create download directory
+mkdir -p ~/.bun/downloads
+cd ~/.bun/downloads
+
+# Download latest Bun for Linux ARM64
+# Check https://github.com/oven-sh/bun/releases for latest version
+BUN_VERSION="1.2.20"  # Update this to latest version
+wget "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-aarch64.zip"
+
+# Extract binary
+unzip "bun-linux-aarch64.zip"
+cd "bun-linux-aarch64"
+
+# Copy binary to our setup
+cp bun ~/.bun/bin/buno
+chmod +x ~/.bun/bin/buno
+
+# Test compatibility with glibc-runner
+grun ~/.bun/bin/buno --version
+```
+
+#### Automated Download Script
+```bash
+# Get latest release automatically
+LATEST_URL=$(curl -s https://api.github.com/repos/oven-sh/bun/releases/latest | grep "browser_download_url.*bun-linux-aarch64.zip" | cut -d '"' -f 4)
+
+# Download and install
+mkdir -p ~/.bun/downloads
+cd ~/.bun/downloads
+wget "$LATEST_URL" -O bun-latest-aarch64.zip
+unzip -o bun-latest-aarch64.zip
+cd bun-linux-aarch64
+cp bun ~/.bun/bin/buno
+chmod +x ~/.bun/bin/buno
+
+# Verify
+grun ~/.bun/bin/buno --version
+```
+
+#### Verify Binary Compatibility
+After downloading an official binary, test it:
+
+```bash
+# Test basic execution
+grun ~/.bun/bin/buno --version
+
+# Test with wrapper
+bun --version
+
+# Test package operations (might need copyfile backend)
+echo '{}' > test-package.json
+grun ~/.bun/bin/buno add lodash --backend=copyfile
+```
+
+**Note**: Official binaries may have different compatibility characteristics. The included binary is pre-tested for Termux/glibc-runner compatibility.
+
+### Option 3: Building from Source (Advanced)
 If you want to build Bun from source:
 
 ```bash
@@ -117,17 +178,24 @@ If you want to build Bun from source:
 # See: https://github.com/oven-sh/bun/blob/main/docs/building.md
 
 # Prerequisites for building:
-pacman -S cmake ninja clang llvm git
+pacman -S cmake ninja clang llvm git nodejs-lts
 
 # Clone Bun source
 git clone https://github.com/oven-sh/bun.git
 cd bun
 
-# Configure for Android/ARM64 (experimental)
-# Note: Official Android support is limited
+# Install dependencies
+npm install
+
+# Configure for cross-compilation (experimental)
+# Note: Building on Termux directly is not officially supported
+make setup
+make dev
+
+# The resulting binary will need glibc-runner compatibility testing
 ```
 
-**Warning**: Building from source is complex, resource-intensive, and may not work on Termux. The included binary is recommended.
+**Warning**: Building from source is complex, resource-intensive, and may not work reliably on Termux. Cross-compilation from a desktop Linux system is recommended if you need a custom build.
 
 ## Post-Installation
 

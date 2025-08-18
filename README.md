@@ -131,6 +131,36 @@ Global: bun i -g pkg → wrapper → grun → buno --backend=copyfile
 - `examples/` - Working example projects
 - `docs/` - Complete documentation and troubleshooting
 
+## Binary Options
+
+### Included Binary (Default)
+The repository includes a pre-tested ARM64 binary that's verified to work with glibc-runner.
+
+### Official Bun Binary (Alternative)
+If you prefer to use the latest official Bun binary:
+
+#### Automated Script (Recommended)
+```bash
+# Use the provided download script
+chmod +x scripts/download-official-bun.sh
+./scripts/download-official-bun.sh
+```
+
+#### Manual Download
+```bash
+# Download latest official Bun for ARM64
+LATEST_URL=$(curl -s https://api.github.com/repos/oven-sh/bun/releases/latest | grep "browser_download_url.*bun-linux-aarch64.zip" | cut -d '"' -f 4)
+mkdir -p ~/.bun/downloads && cd ~/.bun/downloads
+wget "$LATEST_URL" -O bun-latest.zip
+unzip -o bun-latest.zip && cd bun-linux-aarch64
+cp bun ~/.bun/bin/buno && chmod +x ~/.bun/bin/buno
+
+# Test compatibility
+grun ~/.bun/bin/buno --version
+```
+
+**Note**: Official binaries may have different compatibility characteristics. The download script includes automatic testing and backup/restore functionality. See `docs/INSTALLATION.md` for detailed instructions.
+
 ## Known Limitations
 
 ### Environment Variables
