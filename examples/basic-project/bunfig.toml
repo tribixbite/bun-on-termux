@@ -1,0 +1,15 @@
+# Project-specific Bun configuration
+# This file is read for local operations in this directory
+
+[install]
+backend = "copyfile"
+auto = false
+exact = true
+
+[run]
+shell = "system"
+
+[build]
+target = "bun"
+outdir = "./dist"
+minify = false
