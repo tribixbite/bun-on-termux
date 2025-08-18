@@ -1,0 +1,29 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# Enhanced Bun wrapper for Termux - handles directory reading and environment variables
+# Uses bunfig.toml for configuration (backend=copyfile, etc.)
+
+# Note: grun doesn't pass environment variables to processes by default
+# This is a known limitation of glibc-runner v2.0-3
+# Workaround: Applications need to use config files or alternative env methods
+
+# Handle package.json script execution (bun run fails with directory reading)
+if [ "$1" = "run" ] && [ -f "package.json" ] && [ -n "$2" ]; then
+    script_command=$(grep -o "\"$2\":[[:space:]]*\"[^\"]*\"" package.json 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/')
+    if [ -n "$script_command" ]; then
+        # Replace 'bun run' with direct execution in script commands
+        if echo "$script_command" | grep -q "bun run "; then
+            script_file=$(echo "$script_command" | sed 's/bun run //')
+            shift 2  # Remove "run" and script name
+            exec grun ~/.bun/bin/buno "$script_file" "$@"
+        else
+            # Execute script directly (like "./build.sh")
+            shift  # Remove "run"  
+            exec $script_command "$@"
+        fi
+    fi
+fi
+
+# For everything else, just use grun with working binary
+# bunfig.toml handles backend=copyfile automatically
+# Note: Environment variables are not passed through grun - this is a limitation
+exec grun ~/.bun/bin/buno "$@"

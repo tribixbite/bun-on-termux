@@ -1,0 +1,24 @@
+# Bun
+node_modules/
+bun.lock
+*.log
+
+# Termux temp files
+.cache/
+temp-*
+
+# Binary backups
+*.orig
+*.backup
+
+# Test outputs
+bun-test-*/
+test-results/
+
+# Environment files
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db

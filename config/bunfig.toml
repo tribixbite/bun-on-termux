@@ -1,0 +1,44 @@
+# Global Bun Configuration for Termux
+# Optimized for Android/Termux environment with glibc-runner integration
+
+[install]
+# Use copyfile backend by default for Termux compatibility
+backend = "copyfile"
+# Exact versions to avoid dependency conflicts
+exact = true
+# Registry configuration
+registry = "https://registry.npmjs.org"
+# Disable automatic scripts that may fail on Termux
+auto = false
+# Production optimizations
+production = false
+# Optional dependencies (can be problematic on Termux)
+optional = true
+# Peer dependencies handling
+peer = false
+# Development dependencies in development mode
+dev = true
+
+[run]
+# Shell to use for script execution
+shell = "system"
+# Working directory behavior
+cwd = "."
+# Silent mode for cleaner output
+silent = false
+
+[test]
+# Test runner configuration
+coverage = false
+# Timeout for tests (Termux can be slower)
+timeout = 30000
+
+[build]
+# Build optimizations for Termux
+target = "bun"
+# Output directory
+outdir = "./dist"
+# Minification (can be slow on mobile)
+minify = false
+# Source maps for debugging
+sourcemap = "external"
