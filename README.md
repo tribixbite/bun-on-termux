@@ -10,10 +10,12 @@ This project provides working Bun binaries and wrappers for Termux Android, enab
 
 - ✅ Native Bun execution (`bun script.js`)
 - ✅ Package management (`bun install`, `bun add`, `bun remove`)
+- ✅ Global installs (`bun i -g package`) - automatic copyfile backend
 - ✅ TypeScript support (`bun script.ts`)
 - ✅ Build system (`bun build`)
-- ⚠️ Limited `bun run` (package.json scripts) - wrapper handles this
-- ❌ Environment variables don't pass through grun (known limitation)
+- ✅ Package.json scripts (`bun run dev`) - wrapper handles this
+- ⚠️ Environment variables don't pass through grun (known limitation)
+- ⚠️ Some build compilation features limited on ARM64 Android
 
 ## Installation
 
@@ -42,12 +44,12 @@ chmod +x setup.sh
 
 ## Files
 
-- `wrappers/bun` - Main Bun wrapper script  
+- `wrappers/bun` - Main Bun wrapper script with global install fixes
 - `wrappers/bun-minimal` - Minimal wrapper focusing on core issues
 - `config/bunfig.toml` - Global Bun configuration for Termux
 - `binaries/` - Working Bun binaries (`buno`, etc.)
 - `test-bun-comprehensive.sh` - Complete test suite for all Bun commands
-- `docs/` - Documentation and troubleshooting guides
+- `docs/` - Documentation, architecture, and troubleshooting guides
 
 ## Architecture
 

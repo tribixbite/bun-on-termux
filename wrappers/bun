@@ -23,7 +23,31 @@ if [ "$1" = "run" ] && [ -f "package.json" ] && [ -n "$2" ]; then
     fi
 fi
 
+# Handle global installs - bunfig.toml backend setting is ignored for global installs
+# Must explicitly pass --backend=copyfile for Termux compatibility
+if [ "$1" = "install" ] || [ "$1" = "i" ] || [ "$1" = "add" ]; then
+    # Check if -g or --global flag is present
+    for arg in "$@"; do
+        if [ "$arg" = "-g" ] || [ "$arg" = "--global" ]; then
+            # Check if --backend is already specified
+            backend_specified=false
+            for check_arg in "$@"; do
+                if echo "$check_arg" | grep -q "^--backend="; then
+                    backend_specified=true
+                    break
+                fi
+            done
+            
+            # Add --backend=copyfile if not already specified
+            if [ "$backend_specified" = false ]; then
+                exec grun ~/.bun/bin/buno "$@" --backend=copyfile
+            fi
+            break
+        fi
+    done
+fi
+
 # For everything else, just use grun with working binary
-# bunfig.toml handles backend=copyfile automatically
+# bunfig.toml handles backend=copyfile automatically for local installs
 # Note: Environment variables are not passed through grun - this is a limitation
 exec grun ~/.bun/bin/buno "$@"
