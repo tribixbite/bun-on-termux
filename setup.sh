@@ -10,12 +10,24 @@ echo "=========================="
 # Check prerequisites
 echo "📋 Checking prerequisites..."
 command -v git >/dev/null || { echo "❌ git not found. Run: pkg install git"; exit 1; }
-command -v node >/dev/null || { echo "❌ node not found. Run: pkg install nodejs-lts"; exit 1; }
 
-# Install glibc-runner if not present
+# Check for pacman and glibc-runner
+if ! command -v pacman >/dev/null; then
+    echo "❌ pacman not found. You need to install termux-pacman first."
+    echo "📖 See: https://github.com/termux-pacman/termux-packages"
+    echo "   Run the bootstrap installation script from that repository"
+    exit 1
+fi
+
 if ! command -v grun >/dev/null; then
     echo "📦 Installing glibc-runner..."
-    bash <(curl -s https://raw.githubusercontent.com/termux-pacman/glibc-packages/upds/install-glibc-runner.sh)
+    if pacman -S glibc-runner --noconfirm; then
+        echo "✅ glibc-runner installed successfully"
+    else
+        echo "❌ Failed to install glibc-runner. Make sure gpkg repository is configured."
+        echo "📖 See: https://github.com/termux-pacman/glibc-packages/wiki"
+        exit 1
+    fi
 else
     echo "✅ glibc-runner already installed"
 fi

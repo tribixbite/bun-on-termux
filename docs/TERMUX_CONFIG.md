@@ -2,12 +2,10 @@
 
 ## System Information
 
-**Generated**: 2025-08-18
-**Termux Version**: 0.118.3 (GitHub Release)
-**Android Version**: 15
-**Device**: Samsung SM-S938U1
-**Architecture**: aarch64 (ARM64)
-**Kernel**: Linux 6.6.30-android15-8-30455426-abogkiS938USQS5AYE7-4k
+**Template**: Termux system configuration reference
+**Requirements**: Android 7+ with aarch64 (ARM64) architecture
+**Termux Source**: F-Droid or GitHub releases (NOT Google Play Store)
+**Package Manager**: termux-pacman (required for glibc-runner)
 
 ## Package Manager Configuration
 
@@ -89,7 +87,7 @@ export TERMUX_EXEC__LOG_LEVEL=[1-4]
 ~/.bun/bin/
 ├── bun -> bun.glibc.sh           # Main entry point (symlink)
 ├── bun.glibc.sh                  # Enhanced wrapper script  
-├── bun.orig                      # Original Bun binary (96MB glibc)
+├── buno                          # Working Bun binary (92MB musl)
 ├── bunx                          # Package execution wrapper
 └── [various legacy binaries]     # Historical builds and tests
 ```
@@ -194,7 +192,7 @@ pacman -Scc
 ### Bun Execution Issues
 ```bash
 # Test direct execution
-grun ~/.bun/bin/bun.orig --version
+grun ~/.bun/bin/buno --version
 
 # Test wrapper functionality
 bun --version

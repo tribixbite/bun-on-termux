@@ -2,6 +2,29 @@
 
 All notable changes to Bun on Termux will be documented in this file.
 
+## [1.1.1] - 2025-08-18
+
+### Documentation Fixes
+- **CRITICAL**: Fixed incorrect glibc-runner installation instructions
+- **Removed**: All references to non-existent install script URLs
+- **Corrected**: Prerequisites now correctly specify termux-pacman requirement
+- **Added**: Complete installation guide with proper pacman setup
+- **Updated**: README with accurate installation and usage instructions
+- **Removed**: Misleading references to `bun.orig` binary
+- **Added**: Clear binary source documentation (included `buno` binary)
+
+### Setup Script Improvements
+- **Fixed**: setup.sh now uses correct pacman commands
+- **Added**: Proper error handling for missing pacman/glibc-runner
+- **Removed**: Non-working curl script installation
+- **Improved**: Clear error messages with correct documentation links
+
+### Documentation Structure
+- **New**: docs/INSTALLATION.md with complete setup guide
+- **Updated**: All documentation references to use correct binaries and commands
+- **Improved**: Clear distinction between manual and automatic installation
+- **Added**: Troubleshooting section with actual working solutions
+
 ## [1.1.0] - 2025-08-18
 
 ### Added
