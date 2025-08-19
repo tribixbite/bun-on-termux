@@ -1,86 +1,89 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# Enhanced Bunx wrapper for Termux - implements proper bun x behavior
-# Follows the same logic as official bun x: check existing binaries first, only install if needed
+# Enhanced Bunx wrapper for Termux - implements temporary package execution like npx
+# Uses isolated temporary directory, removes after execution
 
-# Function to run package with proper bunx behavior
+# Function to run package with proper temporary execution
 run_package() {
     local package="$1"
     shift
     
-    # Extract package name and binary name (handle @scope/package and package@version)
+    # Extract package name for binary detection
     local package_name=$(echo "$package" | sed 's/@[^/]*$//' | sed 's/.*\///')
     local binary_name="$package_name"
     
-    # Handle special package to binary mappings (like bun does)
+    # Handle special package to binary mappings
     case "$package_name" in
         "typescript")
             binary_name="tsc"
-            ;;
-        "create-react-app")
-            binary_name="create-react-app"
             ;;
         *)
             binary_name="$package_name"
             ;;
     esac
     
-    # First, try to find existing binary in PATH (like system-installed or project node_modules)
+    # First, try to find existing binary in PATH
     if command -v "$binary_name" >/dev/null 2>&1; then
         exec "$binary_name" "$@"
     fi
     
-    # Create bunx cache directory (similar to official bun behavior)
-    local uid=$(id -u 2>/dev/null || echo "1000")
-    local display_version="latest"
-    local cache_dir="$HOME/.bun/tmp/bunx-$uid-$package_name@$display_version"
-    local bin_path="$cache_dir/node_modules/.bin/$binary_name"
+    # Create unique temporary directory for this execution
+    local temp_id="$$-$(date +%s)"
+    local temp_dir="$HOME/.bun/tmp/bunx-temp-$temp_id"
     
-    # Check if we have a cached version that's not stale (less than 24 hours old)
-    if [ -f "$bin_path" ]; then
-        local file_age=0
-        if [ -e "$bin_path" ]; then
-            local current_time=$(date +%s)
-            local file_time=$(stat -c %Y "$bin_path" 2>/dev/null || stat -f %m "$bin_path" 2>/dev/null || echo "0")
-            file_age=$((current_time - file_time))
+    # Function to cleanup on exit
+    cleanup() {
+        if [ -d "$temp_dir" ]; then
+            rm -rf "$temp_dir" 2>/dev/null || true
         fi
-        
-        # If less than 24 hours old (86400 seconds), use cached version
-        if [ "$file_age" -lt 86400 ] && [ -x "$bin_path" ]; then
-            exec "$bin_path" "$@"
-        fi
-    fi
+    }
     
-    # If we reach here, we need to install the package
-    echo "Installing $package..."
+    # Ensure cleanup happens on script exit
+    trap cleanup EXIT INT TERM
     
-    # Create cache directory and package.json
-    mkdir -p "$cache_dir"
-    cd "$cache_dir"
+    # Create temporary directory and package.json
+    mkdir -p "$temp_dir"
+    cd "$temp_dir"
     echo '{}' > package.json
     
-    # Install the package using bun add with copyfile backend for Termux compatibility
+    # Install package temporarily using bun add
     if bun add "$package" --backend=copyfile --no-summary 2>/dev/null; then
         # Try to run the binary
+        local bin_path="$temp_dir/node_modules/.bin/$binary_name"
+        local exit_code=0
+        
         if [ -x "$bin_path" ]; then
-            exec "$bin_path" "$@"
-        elif [ -x "$cache_dir/node_modules/.bin/$package_name" ]; then
-            # Sometimes binary name differs from package name
-            exec "$cache_dir/node_modules/.bin/$package_name" "$@"
+            "$bin_path" "$@"
+            exit_code=$?
+        elif [ -x "$temp_dir/node_modules/.bin/$package_name" ]; then
+            "$temp_dir/node_modules/.bin/$package_name" "$@"
+            exit_code=$?
         else
             # Look for any executable in the bin directory
-            if [ -d "$cache_dir/node_modules/.bin" ]; then
-                local first_bin=$(find "$cache_dir/node_modules/.bin" -type f -executable | head -1)
+            if [ -d "$temp_dir/node_modules/.bin" ]; then
+                local first_bin=$(find "$temp_dir/node_modules/.bin" -type f -executable | head -1)
                 if [ -n "$first_bin" ]; then
-                    exec "$first_bin" "$@"
+                    "$first_bin" "$@"
+                    exit_code=$?
+                else
+                    echo "Error: No executable found for package '$package'"
+                    cleanup
+                    exit 1
                 fi
+            else
+                echo "Error: Could not find bin directory for package '$package'"
+                cleanup
+                exit 1
             fi
         fi
+        
+        # Explicit cleanup and exit with the binary's exit code
+        cleanup
+        exit $exit_code
+    else
+        echo "Error: Failed to install package '$package'"
+        cleanup
+        exit 1
     fi
-    
-    # If we get here, something went wrong
-    echo "Error: Could not find or run executable for package '$package'"
-    echo "Tried binary names: $binary_name, $package_name"
-    exit 1
 }
 
 # Handle help and flags first
