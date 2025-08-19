@@ -7,6 +7,9 @@ run_package() {
     local package="$1"
     shift
     
+    # Store the original working directory
+    local original_dir="$(pwd)"
+    
     # Extract package name for binary detection
     local package_name=$(echo "$package" | sed 's/@[^/]*$//' | sed 's/.*\///')
     local binary_name="$package_name"
@@ -47,7 +50,10 @@ run_package() {
     
     # Install package temporarily using bun add
     if bun add "$package" --backend=copyfile --no-summary 2>/dev/null; then
-        # Try to run the binary
+        # Change back to original directory before running the binary
+        cd "$original_dir"
+        
+        # Try to run the binary from the original directory
         local bin_path="$temp_dir/node_modules/.bin/$binary_name"
         local exit_code=0
         
