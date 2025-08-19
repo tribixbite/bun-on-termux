@@ -1,0 +1,112 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# Enhanced Bunx wrapper for Termux - implements proper bun x behavior
+# Follows the same logic as official bun x: check existing binaries first, only install if needed
+
+# Function to run package with proper bunx behavior
+run_package() {
+    local package="$1"
+    shift
+    
+    # Extract package name and binary name (handle @scope/package and package@version)
+    local package_name=$(echo "$package" | sed 's/@[^/]*$//' | sed 's/.*\///')
+    local binary_name="$package_name"
+    
+    # Handle special package to binary mappings (like bun does)
+    case "$package_name" in
+        "typescript")
+            binary_name="tsc"
+            ;;
+        "create-react-app")
+            binary_name="create-react-app"
+            ;;
+        *)
+            binary_name="$package_name"
+            ;;
+    esac
+    
+    # First, try to find existing binary in PATH (like system-installed or project node_modules)
+    if command -v "$binary_name" >/dev/null 2>&1; then
+        exec "$binary_name" "$@"
+    fi
+    
+    # Create bunx cache directory (similar to official bun behavior)
+    local uid=$(id -u 2>/dev/null || echo "1000")
+    local display_version="latest"
+    local cache_dir="$HOME/.bun/tmp/bunx-$uid-$package_name@$display_version"
+    local bin_path="$cache_dir/node_modules/.bin/$binary_name"
+    
+    # Check if we have a cached version that's not stale (less than 24 hours old)
+    if [ -f "$bin_path" ]; then
+        local file_age=0
+        if [ -e "$bin_path" ]; then
+            local current_time=$(date +%s)
+            local file_time=$(stat -c %Y "$bin_path" 2>/dev/null || stat -f %m "$bin_path" 2>/dev/null || echo "0")
+            file_age=$((current_time - file_time))
+        fi
+        
+        # If less than 24 hours old (86400 seconds), use cached version
+        if [ "$file_age" -lt 86400 ] && [ -x "$bin_path" ]; then
+            exec "$bin_path" "$@"
+        fi
+    fi
+    
+    # If we reach here, we need to install the package
+    echo "Installing $package..."
+    
+    # Create cache directory and package.json
+    mkdir -p "$cache_dir"
+    cd "$cache_dir"
+    echo '{}' > package.json
+    
+    # Install the package using bun add with copyfile backend for Termux compatibility
+    if bun add "$package" --backend=copyfile --no-summary 2>/dev/null; then
+        # Try to run the binary
+        if [ -x "$bin_path" ]; then
+            exec "$bin_path" "$@"
+        elif [ -x "$cache_dir/node_modules/.bin/$package_name" ]; then
+            # Sometimes binary name differs from package name
+            exec "$cache_dir/node_modules/.bin/$package_name" "$@"
+        else
+            # Look for any executable in the bin directory
+            if [ -d "$cache_dir/node_modules/.bin" ]; then
+                local first_bin=$(find "$cache_dir/node_modules/.bin" -type f -executable | head -1)
+                if [ -n "$first_bin" ]; then
+                    exec "$first_bin" "$@"
+                fi
+            fi
+        fi
+    fi
+    
+    # If we get here, something went wrong
+    echo "Error: Could not find or run executable for package '$package'"
+    echo "Tried binary names: $binary_name, $package_name"
+    exit 1
+}
+
+# Handle help and flags first
+if [ -z "$1" ] || [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+    echo "Usage: bunx [flags] <package><@version> [flags and arguments for the package]"
+    echo "Execute an npm package executable (CLI), automatically installing into a global shared cache if not installed in node_modules."
+    echo ""
+    echo "Flags:"
+    echo "  --bun      Force the command to run with Bun instead of Node.js"
+    echo ""
+    echo "Examples:"
+    echo "  bunx prisma migrate"
+    echo "  bunx prettier foo.js"
+    echo "  bunx --bun vite dev foo.js"
+    exit 0
+fi
+
+# Handle --bun flag (for now, just ignore it as we're already using bun)
+if [ "$1" = "--bun" ]; then
+    shift
+    # Check if we have a package name after removing --bun
+    if [ -z "$1" ]; then
+        echo "Error: Package name required after --bun flag"
+        exit 1
+    fi
+fi
+
+# Run the package
+run_package "$@"

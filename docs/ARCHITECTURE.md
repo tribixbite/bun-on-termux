@@ -31,6 +31,15 @@ This document explains the technical architecture of how Bun works on Termux And
 - **Function**: Bun reads and respects these config files properly
 - **Key Settings**: `backend=copyfile` for Termux compatibility
 
+### 5. Bunx Wrapper
+- **Purpose**: Package execution without permanent installation
+- **Location**: `~/.bun/bin/bunx`
+- **Key Functions**:
+  - Binary detection in PATH and node_modules
+  - Smart caching in `~/.bun/tmp/bunx-<uid>-<package>@<version>/`
+  - 24-hour staleness detection
+  - Binary name mappings (typescript → tsc)
+
 ## Execution Flow
 
 ### Direct File Execution
@@ -59,6 +68,15 @@ bun i -g → wrapper → grun → buno + --backend=copyfile (forced)
 ```
 - ✅ Local installs use bunfig.toml
 - ✅ Global installs get forced copyfile backend
+
+### Package Execution (bunx)
+```
+bunx package → bunx wrapper → check PATH → check cache → install if needed → execute
+```
+- ✅ Smart caching prevents repeated installations
+- ✅ Existing binaries are detected and used directly
+- ✅ Environment variables pass through properly
+- ✅ Automatic staleness detection and cleanup
 
 ## Technical Challenges
 

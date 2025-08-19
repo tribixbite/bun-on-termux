@@ -131,11 +131,13 @@ Bunx: bunx pkg → wrapper → check PATH → check cache → install if needed 
 ## File Structure
 
 - `wrappers/bun` - Main wrapper with Android compatibility fixes
+- `wrappers/bunx` - Bunx wrapper with smart caching and binary detection
 - `wrappers/bun-minimal` - Minimal wrapper for testing
 - `binaries/buno` - Working ARM64 Bun binary (92MB)
 - `config/bunfig.toml` - Local project configuration template
 - `config/bunfig-global.toml` - Global configuration template
 - `test-bun-comprehensive.sh` - Complete test suite (40+ tests)
+- `init` - Setup script with server and testing capabilities
 - `examples/` - Working example projects
 - `docs/` - Complete documentation and troubleshooting
 

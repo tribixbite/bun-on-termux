@@ -24,11 +24,16 @@ bun run dev
 1. Use config files instead of environment variables
 2. Hardcode values temporarily
 3. Create wrapper scripts that set variables
+4. Use `bunx` which properly passes environment variables
 
 ```bash
-# Won't work:
+# Won't work with main bun wrapper:
 export API_KEY=abc123
 bun script.js
+
+# Works with bunx:
+export API_KEY=abc123
+bunx your-cli-tool
 
 # Workaround - use config file:
 echo '{"apiKey": "abc123"}' > config.json
@@ -175,12 +180,46 @@ bun install --prefer-offline
 bun install --concurrent=2
 ```
 
+### Bunx Package Not Found
+
+**Symptom**: `bunx package` fails with "Could not find executable" error
+**Cause**: Package doesn't provide expected binary name
+**Solutions**:
+1. Check what binaries the package actually provides
+2. Use `--package` flag to specify binary name explicitly
+3. Check if package is compatible with ARM64/Android
+
+```bash
+# Check what binaries a package provides:
+bunx --package=your-package --help
+
+# Sometimes package name differs from binary name:
+bunx typescript --version  # Uses 'tsc' binary automatically
+```
+
+### Bunx Cache Issues
+
+**Symptom**: Old versions being used or cache corruption
+**Cause**: Stale cache or permission issues
+**Solutions**:
+1. Clear bunx cache manually
+2. Check cache directory permissions
+
+```bash
+# Clear bunx cache:
+rm -rf ~/.bun/tmp/bunx-*
+
+# Check cache permissions:
+ls -la ~/.bun/tmp/
+```
+
 ## Getting Help
 
 1. Run the comprehensive test suite: `./test-bun-comprehensive.sh`
-2. Check the detailed output for specific failing commands
-3. Consult the main README.md for architecture details
-4. Open an issue with test results and system information
+2. Test bunx functionality: `./init test-bunx`
+3. Check the detailed output for specific failing commands
+4. Consult the main README.md for architecture details
+5. Open an issue with test results and system information
 
 ### System Information to Include
 
