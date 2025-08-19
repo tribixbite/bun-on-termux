@@ -1,0 +1,3 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# Generated executable for Bun on Termux
+exec bun "/data/data/com.termux/files/home/git/bun-on-termux/examples/basic-project/dist/index.js" "$@"

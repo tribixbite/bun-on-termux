@@ -54,8 +54,8 @@ head -n 10 ~/.bun/bin/bun
 **Cause**: Network issues or lifecycle scripts
 **Solutions**:
 1. Use `--ignore-scripts` flag
-2. Configure `bunfig.toml` with `auto = false`
-3. Use `backend = "copyfile"` for Termux compatibility
+2. Configure `bunfig.toml` with `auto = false` (this file is read by Bun)
+3. Use `backend = "copyfile"` in bunfig.toml for Termux compatibility
 
 ```bash
 bun install --ignore-scripts

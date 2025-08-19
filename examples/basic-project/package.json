@@ -1,18 +1,31 @@
 {
   "name": "bun-termux-example",
   "version": "1.0.0",
-  "description": "Example Bun project for Termux",
+  "description": "Comprehensive example Bun project for Termux Android",
   "main": "index.js",
+  "type": "module",
   "scripts": {
-    "dev": "bun index.ts",
-    "build": "bun build index.ts --outdir=dist",
+    "dev": "bun --watch index.ts",
+    "build": "bun build.ts",
+    "build:simple": "bun build index.ts --outdir=dist",
     "test": "bun test",
-    "start": "bun dist/index.js"
-  },
-  "dependencies": {
-    "chalk": "^4.1.2"
+    "test:watch": "bun test --watch",
+    "start": "bun dist/index.js",
+    "clean": "rm -rf dist node_modules",
+    "check": "bun --version && bun test && echo 'All checks passed!'"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0"
-  }
+    "@types/node": "^20.0.0",
+    "bun-types": "latest"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "keywords": [
+    "bun",
+    "termux",
+    "android",
+    "typescript",
+    "example"
+  ]
 }

@@ -1,0 +1,10 @@
+{
+  "version": 3,
+  "sources": ["../index.ts"],
+  "sourcesContent": [
+    "#!/usr/bin/env bun\n\nconsole.log(\"🥟 Hello from Bun on Termux!\");\nconsole.log(\"✅ TypeScript support working\");\nconsole.log(\"⚡ Fast JavaScript runtime\");\n\n// Test Bun APIs\nconsole.log(`📦 Bun version: ${Bun.version}`);\nconsole.log(`🏠 Platform: ${process.platform}-${process.arch}`);\n\n// Test file operations\nconst file = Bun.file(\"package.json\");\nconst text = await file.text();\nconst packageInfo = JSON.parse(text);\nconsole.log(`📋 Project: ${packageInfo.name} v${packageInfo.version}`);\n\n// Test performance\nconst start = performance.now();\nawait new Promise(resolve => setTimeout(resolve, 10));\nconst end = performance.now();\nconsole.log(`⏱️  Timing precision: ${(end - start).toFixed(2)}ms`);\n\nexport default function main() {\n  return \"Bun on Termux is working! 🚀\";\n}"
+  ],
+  "mappings": ";;;;AAEA,QAAQ,IAAI,wCAA6B;AACzC,QAAQ,IAAI,mCAA6B;AACzC,QAAQ,IAAI,gCAA0B;AAGtC,QAAQ,IAAI,6BAAkB,IAAI,SAAS;AAC3C,QAAQ,IAAI,0BAAe,QAAQ,YAAY,QAAQ,MAAM;AAG7D,IAAM,OAAO,IAAI,KAAK,cAAc;AACpC,IAAM,OAAO,MAAM,KAAK,KAAK;AAC7B,IAAM,cAAc,KAAK,MAAM,IAAI;AACnC,QAAQ,IAAI,yBAAc,YAAY,SAAS,YAAY,SAAS;AAGpE,IAAM,QAAQ,YAAY,IAAI;AAC9B,MAAM,IAAI,QAAQ,aAAW,WAAW,SAAS,EAAE,CAAC;AACpD,IAAM,MAAM,YAAY,IAAI;AAC5B,QAAQ,IAAI,oCAAyB,MAAM,OAAO,QAAQ,CAAC,KAAK;AAEhE,SAAwB,IAAI,GAAG;AAAA,EAC7B,OAAO;AAAA;",
+  "debugId": "7E0284AA36D404C664756E2164756E21",
+  "names": []
+}

@@ -1,0 +1,22 @@
+{
+  "name": "bun-termux-advanced",
+  "version": "1.0.0",
+  "description": "Advanced Bun features demonstration for Termux",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot server.ts",
+    "build": "bun build server.ts --outdir=dist --target=bun",
+    "test": "bun test",
+    "benchmark": "bun benchmark.ts",
+    "sqlite": "bun sqlite-demo.ts",
+    "crypto": "bun crypto-demo.ts",
+    "fetch": "bun fetch-demo.ts"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "bun-types": "latest"
+  }
+}

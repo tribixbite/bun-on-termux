@@ -101,14 +101,15 @@ bunx -> bunx-minimal        # 4-line wrapper script
 ```
 
 #### 2. **Configuration-Driven Approach**
-- **bunfig.toml**: Handles `backend=copyfile` and all optimizations automatically
+- **bunfig.toml**: Read and respected by Bun for local installs (backend=copyfile works)
 - **grun integration**: Direct execution of working `buno` binary via glibc-runner
 - **Minimal logic**: Only handles essential `bun run` directory reading issues
 
 #### 3. **Package Management (via bunfig.toml)**
 ```bash
-bun install    # bunfig.toml automatically applies backend=copyfile
-bun add pkg    # bunfig.toml automatically applies backend=copyfile
+bun install       # bunfig.toml backend=copyfile is read and applied
+bun add pkg       # bunfig.toml backend=copyfile is read and applied  
+bun i -g pkg      # Global installs ignore bunfig.toml (wrapper adds --backend=copyfile)
 ```
 
 #### 4. **Build Process Compatibility**
@@ -122,7 +123,7 @@ bun add pkg    # bunfig.toml automatically applies backend=copyfile
 **Core Logic**:
 - `bun run [script]` → Parse package.json and execute directly
 - Everything else → `exec grun ~/.bun/bin/buno "$@"`
-- All configuration handled by `~/bunfig.toml`
+- Local install configuration handled by bunfig.toml (which Bun reads properly)
 
 ## Package Installation Verification
 

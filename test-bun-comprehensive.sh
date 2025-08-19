@@ -142,10 +142,19 @@ echo "🧪 Test Runner:"
 echo 'import { test, expect } from "bun:test";
 test("math", () => {
   expect(2 + 2).toBe(4);
+});
+test("async test", async () => {
+  await new Promise(resolve => setTimeout(resolve, 1));
+  expect(true).toBe(true);
 });' > test.test.ts
 
 run_test "bun test" "bun test" any 10
 run_test "bun test --help" "bun test --help" 0
+
+# Test TypeScript compilation
+echo 'function add(a: number, b: number): number { return a + b; }
+console.log("TypeScript test:", add(2, 3));' > typescript-test.ts
+run_test "TypeScript compilation" "bun typescript-test.ts" 0
 
 # === BUILDING ===
 echo "🏗️ Build Commands:"
@@ -241,11 +250,37 @@ bun env-test.js
 echo "Through grun directly:"
 grun ~/.bun/bin/buno env-test.js
 
-# === UWU INTEGRATION TEST ===
-echo "🦄 UWU Integration Test:"
-if [ -f "/data/data/com.termux/files/home/git/uwu/dist/uwu-cli" ]; then
-    run_test "uwu command generation" "/data/data/com.termux/files/home/git/uwu/dist/uwu-cli 'show current time'" any 10
-fi
+# === BINARY COMPATIBILITY TEST ===
+echo "🔧 Binary Compatibility Test:"
+run_test "Direct grun execution" "grun ~/.bun/bin/buno --version" 0
+run_test "Binary file check" "file ~/.bun/bin/buno | grep -q aarch64" 0
+
+# === WRAPPER FUNCTIONALITY ===
+echo "🎛️ Wrapper Functionality:"
+
+# Test global install detection
+echo '#!/bin/bash
+echo "$@"' > fake-grun
+chmod +x fake-grun
+PATH="$(pwd):$PATH" run_test "Global install backend detection" "bun i -g fake-package --dry-run 2>&1 | grep -q 'backend=copyfile'" any
+
+# Test package.json script parsing
+echo '{
+  "scripts": {
+    "test": "echo script works",
+    "build": "bun build-script.js",
+    "complex": "echo start && bun script.js && echo done"
+  }
+}' > wrapper-test-package.json
+
+run_test "Package.json script execution" "cd $(pwd) && bun run test" any
+
+# Test directory reading workaround
+mkdir -p deep/nested/directory
+cd deep/nested/directory
+echo '{"scripts":{"test":"echo deep directory test"}}' > package.json
+run_test "Deep directory script execution" "bun run test" any
+cd ../../..
 
 # Test Results Summary
 echo

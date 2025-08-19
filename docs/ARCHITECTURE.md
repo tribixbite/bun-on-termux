@@ -25,9 +25,10 @@ This document explains the technical architecture of how Bun works on Termux And
   - Global install backend enforcement
   - Package.json script parsing
 
-### 4. Global Configuration
-- **File**: `~/bunfig.toml`
-- **Purpose**: Default settings for all Bun operations
+### 4. Configuration Files
+- **Global**: `~/bunfig.toml` - Default settings for all operations
+- **Local**: `./bunfig.toml` - Project-specific overrides
+- **Function**: Bun reads and respects these config files properly
 - **Key Settings**: `backend=copyfile` for Termux compatibility
 
 ## Execution Flow
@@ -72,9 +73,9 @@ bun i -g → wrapper → grun → buno + --backend=copyfile (forced)
 **Workaround**: Config files, hardcoded values, or wrapper scripts
 
 ### 3. Global Install Backend
-**Problem**: Global installs ignore local bunfig.toml
-**Reason**: By design - global operations are project-independent  
-**Solution**: Wrapper automatically adds `--backend=copyfile`
+**Problem**: Global installs ignore bunfig.toml by Bun design
+**Reason**: Global operations are project-independent and don't read local config
+**Solution**: Wrapper automatically adds `--backend=copyfile` for all global installs
 
 ### 4. Binary Compatibility
 **Problem**: Some Bun binaries segfault on Android
