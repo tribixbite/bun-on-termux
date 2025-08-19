@@ -12,6 +12,7 @@ This project provides a complete Bun runtime for Termux Android, enabling native
 - ✅ **Package Management**: `bun install`, `bun add`, `bun remove` with automatic optimizations
 - ✅ **Global Packages**: `bun i -g package` with automatic copyfile backend
 - ✅ **Script Running**: `bun run dev` with wrapper-based parsing
+- ✅ **Package Execution**: `bunx package` with intelligent caching and binary detection
 - ✅ **Build System**: `bun build` and bundling operations
 - ✅ **TypeScript Support**: Built-in TypeScript compilation and execution
 - ⚠️ **Environment Variables**: Limited due to glibc-runner design constraints
@@ -102,6 +103,12 @@ bun run test
 # Global package installation
 bun i -g prettier
 bun i -g typescript
+
+# Package execution (bunx)
+bunx ccusage           # Run without installing globally
+bunx typescript --version   # Uses existing tsc binary
+bunx cowsay "hello world"   # Installs and runs from cache
+bunx create-react-app my-app  # Template creation
 ```
 
 ## Architecture
@@ -118,6 +125,7 @@ bun i -g typescript
 Direct: bun script.js → wrapper → grun → buno → execution
 Scripts: bun run dev → wrapper → parse package.json → direct execution
 Global: bun i -g pkg → wrapper → grun → buno --backend=copyfile
+Bunx: bunx pkg → wrapper → check PATH → check cache → install if needed → execute
 ```
 
 ## File Structure
@@ -202,6 +210,50 @@ Some `bun run` operations require wrapper intervention due to Android filesystem
 3. Review `docs/TROUBLESHOOTING.md`
 4. Check system requirements and installation steps
 
+## Bunx (Package Execution)
+
+The `bunx` command allows you to execute npm packages directly without permanently installing them. Our implementation follows the same behavior as official Bun with Termux-specific optimizations.
+
+### How Bunx Works
+
+1. **Check existing binaries**: First looks for the command in your PATH and local node_modules
+2. **Smart caching**: Uses `~/.bun/tmp/bunx-<uid>-<package>@<version>/` for temporary installations  
+3. **Staleness detection**: Cached packages are valid for 24 hours, then refreshed automatically
+4. **Binary name mapping**: Handles special cases like `typescript` → `tsc`
+5. **Environment variable support**: Full environment variable passing to executed commands
+
+### Bunx Examples
+
+```bash
+# Execute a package (installs to cache if needed)
+bunx cowsay "Hello from Termux!"
+
+# Use existing system/project binaries when available
+bunx typescript --version      # Uses existing tsc if available
+
+# Template generation
+bunx create-react-app my-app
+
+# Development tools
+bunx prettier src/**.js
+bunx eslint src/
+
+# Analytics and utilities  
+bunx ccusage                   # Claude Code usage analytics
+```
+
+### Cache Management
+
+Bunx automatically manages a cache directory to avoid repeated downloads:
+
+```bash
+# Cache location
+~/.bun/tmp/bunx-<uid>-<package>@<version>/
+
+# Cache is automatically cleaned after 24 hours
+# No manual cleanup required
+```
+
 ## Development
 
 ### Testing
@@ -212,6 +264,10 @@ Some `bun run` operations require wrapper intervention due to Android filesystem
 # Quick functionality test
 bun --version
 bun -e 'console.log("Works!")'
+
+# Test bunx functionality
+bunx --help
+bunx cowsay "bunx test"
 ```
 
 ### Contributing

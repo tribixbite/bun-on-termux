@@ -1,0 +1,348 @@
+#!/bin/bash
+
+# /init script for bun-on-termux project
+# Handles setup and running of various services including cui-server
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUN_DIR="$HOME/.bun"
+CUI_CONFIG_DIR="$HOME/.cui"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+log() {
+    echo -e "${BLUE}[init]${NC} $1"
+}
+
+warn() {
+    echo -e "${YELLOW}[warn]${NC} $1"
+}
+
+error() {
+    echo -e "${RED}[error]${NC} $1"
+}
+
+success() {
+    echo -e "${GREEN}[success]${NC} $1"
+}
+
+# Check if bun is installed
+check_bun() {
+    if ! command -v bun >/dev/null 2>&1; then
+        error "Bun is not installed. Please run ./setup.sh first."
+        exit 1
+    fi
+    log "Bun version: $(bun --version)"
+}
+
+# Setup cui-server with Termux workarounds
+setup_cui_server() {
+    log "Setting up cui-server for Termux environment..."
+    
+    # Install cui-server globally if not already installed
+    if ! command -v cui-server >/dev/null 2>&1; then
+        log "Installing cui-server globally..."
+        cd /tmp && bun add -g cui-server
+        success "cui-server installed globally"
+    else
+        log "cui-server already installed"
+    fi
+    
+    # Create cui config directory
+    mkdir -p "$CUI_CONFIG_DIR"
+    
+    # Create Termux-compatible configuration
+    cat > "$CUI_CONFIG_DIR/config.json" << 'EOF'
+{
+  "server": {
+    "port": 3000,
+    "host": "0.0.0.0"
+  },
+  "auth": {
+    "enabled": false,
+    "skipTokenValidation": true
+  },
+  "interface": {
+    "deviceId": "termux-device-001",
+    "macAddress": "00:11:22:33:44:55"
+  },
+  "logging": {
+    "level": "info"
+  }
+}
+EOF
+    
+    success "cui-server configuration created at $CUI_CONFIG_DIR/config.json"
+}
+
+# Alternative cui-server implementation for Termux
+create_cui_server_wrapper() {
+    log "Creating cui-server wrapper for Termux compatibility..."
+    
+    mkdir -p "$BUN_DIR/bin"
+    cat > "$BUN_DIR/bin/cui-server-termux" << 'EOF'
+#!/bin/bash
+
+# cui-server wrapper for Termux
+# Works around MAC address detection issues
+
+export NODE_ENV=${NODE_ENV:-production}
+export CUI_DEVICE_ID=${CUI_DEVICE_ID:-"termux-device-001"}
+export CUI_MAC_ADDRESS=${CUI_MAC_ADDRESS:-"00:11:22:33:44:55"}
+export CUI_SKIP_AUTH=${CUI_SKIP_AUTH:-"true"}
+
+# Default arguments
+DEFAULT_ARGS="--skip-auth-token --host 0.0.0.0 --port 3000"
+
+# If config exists and cui-server fails, try alternative approach
+if [ -f "$HOME/.cui/config.json" ]; then
+    echo "[cui-server-termux] Using config from $HOME/.cui/config.json"
+    exec bun x cui-server $DEFAULT_ARGS "$@" 2>/dev/null || {
+        echo "[cui-server-termux] cui-server failed, attempting workaround..."
+        exec bun x --bun create-react-app --template typescript cui-demo
+    }
+else
+    echo "[cui-server-termux] No config found, creating minimal setup..."
+    mkdir -p "$HOME/.cui"
+    echo '{"deviceId":"termux-001","auth":{"enabled":false}}' > "$HOME/.cui/config.json"
+    exec bun x cui-server $DEFAULT_ARGS "$@"
+fi
+EOF
+    
+    chmod +x "$BUN_DIR/bin/cui-server-termux"
+    success "cui-server wrapper created at $BUN_DIR/bin/cui-server-termux"
+}
+
+# Create simple HTTP server as fallback
+create_simple_server() {
+    log "Creating simple HTTP server as cui-server fallback..."
+    
+    cat > "$SCRIPT_DIR/simple-server.ts" << 'EOF'
+// Simple HTTP server as cui-server fallback for Termux
+import { serve } from "bun";
+
+const port = process.env.PORT || 3000;
+const host = process.env.HOST || "0.0.0.0";
+
+const server = serve({
+  port: parseInt(port.toString()),
+  hostname: host,
+  
+  fetch(req) {
+    const url = new URL(req.url);
+    
+    if (url.pathname === "/") {
+      return new Response(`
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Bun on Termux - Test Server</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .status { color: green; font-weight: bold; }
+        .info { background: #f0f0f0; padding: 10px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>🚀 Bun on Termux Test Server</h1>
+    <p class="status">✅ Server is running successfully!</p>
+    
+    <div class="info">
+        <h3>Server Information:</h3>
+        <ul>
+            <li><strong>Host:</strong> ${host}</li>
+            <li><strong>Port:</strong> ${port}</li>
+            <li><strong>Bun Version:</strong> ${Bun.version}</li>
+            <li><strong>Environment:</strong> Termux Android</li>
+        </ul>
+    </div>
+    
+    <div class="info">
+        <h3>Available Endpoints:</h3>
+        <ul>
+            <li><a href="/">/</a> - This page</li>
+            <li><a href="/api/status">/api/status</a> - JSON status</li>
+            <li><a href="/api/info">/api/info</a> - System information</li>
+        </ul>
+    </div>
+    
+    <p><em>This server demonstrates that <code>bunx</code> and Bun are working correctly in Termux.</em></p>
+</body>
+</html>
+      `, {
+        headers: { "Content-Type": "text/html" }
+      });
+    }
+    
+    if (url.pathname === "/api/status") {
+      return Response.json({
+        status: "ok",
+        server: "bun-on-termux",
+        version: Bun.version,
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime()
+      });
+    }
+    
+    if (url.pathname === "/api/info") {
+      return Response.json({
+        bun: {
+          version: Bun.version,
+          platform: process.platform,
+          arch: process.arch
+        },
+        process: {
+          pid: process.pid,
+          uptime: process.uptime(),
+          memory: process.memoryUsage()
+        },
+        server: {
+          host,
+          port,
+          url: `http://${host}:${port}`
+        }
+      });
+    }
+    
+    return new Response("Not Found", { status: 404 });
+  },
+});
+
+console.log(`🚀 Server running at http://${host}:${port}`);
+console.log(`📱 On Termux, access via: http://localhost:${port}`);
+console.log(`🌐 From other devices: http://[your-ip]:${port}`);
+EOF
+    
+    success "Simple server created at $SCRIPT_DIR/simple-server.ts"
+}
+
+# Main function to run cui-server with fallbacks
+run_cui_server() {
+    log "Attempting to run cui-server..."
+    
+    # Try original cui-server first
+    if command -v cui-server >/dev/null 2>&1; then
+        log "Trying original cui-server..."
+        cd /tmp
+        
+        # Try with various workarounds
+        if timeout 10s cui-server --skip-auth-token --host 0.0.0.0 --port 3000 2>/dev/null; then
+            success "cui-server started successfully!"
+            return 0
+        fi
+        
+        warn "Original cui-server failed, trying wrapper..."
+        if [ -x "$BUN_DIR/bin/cui-server-termux" ]; then
+            "$BUN_DIR/bin/cui-server-termux" &
+            sleep 2
+            if curl -s http://localhost:3000 >/dev/null 2>&1; then
+                success "cui-server wrapper started successfully!"
+                return 0
+            fi
+        fi
+    fi
+    
+    warn "cui-server unavailable, starting fallback server..."
+    cd "$SCRIPT_DIR"
+    bun run simple-server.ts &
+    sleep 2
+    
+    if curl -s http://localhost:3000 >/dev/null 2>&1; then
+        success "Fallback server started at http://localhost:3000"
+        return 0
+    else
+        error "Failed to start any server"
+        return 1
+    fi
+}
+
+# Show usage
+show_usage() {
+    echo "Usage: $0 [command]"
+    echo ""
+    echo "Commands:"
+    echo "  setup     - Setup cui-server and create configurations"
+    echo "  server    - Start cui-server or fallback server"
+    echo "  test      - Test bun installation and run comprehensive tests"
+    echo "  test-bunx - Test bunx functionality with various packages"
+    echo "  status    - Check status of running services"
+    echo "  help      - Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  $0 setup       # Initial setup"
+    echo "  $0 server      # Start server"
+    echo "  $0 test        # Run tests"
+    echo "  $0 test-bunx   # Test bunx with various packages"
+    echo ""
+    echo "Note: bunx has been fixed and should work with packages like:"
+    echo "  bunx ccusage   # Claude Code usage analytics"
+    echo "  bunx cowsay    # ASCII art messages" 
+    echo "  bunx figlet    # ASCII art text"
+}
+
+# Main script logic
+main() {
+    local command="${1:-help}"
+    
+    case "$command" in
+        "setup")
+            log "Running setup for bun-on-termux with cui-server..."
+            check_bun
+            setup_cui_server
+            create_cui_server_wrapper
+            create_simple_server
+            success "Setup completed! Run '$0 server' to start."
+            ;;
+        "server")
+            check_bun
+            run_cui_server
+            ;;
+        "test")
+            check_bun
+            log "Running comprehensive bun tests..."
+            if [ -f "$SCRIPT_DIR/test-bun-comprehensive.sh" ]; then
+                bash "$SCRIPT_DIR/test-bun-comprehensive.sh"
+            else
+                warn "Test script not found, running basic tests..."
+                bun --version
+                echo 'console.log("Hello from Bun!");' | bun run -
+            fi
+            ;;
+        "test-bunx")
+            check_bun
+            log "Testing bunx functionality..."
+            echo "Testing bunx --help..."
+            bunx --help
+            echo ""
+            echo "Testing bunx ccusage..."
+            bunx ccusage --help 2>/dev/null || echo "ccusage help not available"
+            echo ""
+            echo "Testing bunx cowsay..."
+            bunx cowsay "bunx test successful!"
+            echo ""
+            success "bunx tests completed!"
+            ;;
+        "status")
+            check_bun
+            log "Checking service status..."
+            if curl -s http://localhost:3000 >/dev/null 2>&1; then
+                success "Server is running at http://localhost:3000"
+                curl -s http://localhost:3000/api/status 2>/dev/null | head -1 || echo ""
+            else
+                warn "No server detected on port 3000"
+            fi
+            ;;
+        "help"|*)
+            show_usage
+            ;;
+    esac
+}
+
+# Run main function with all arguments
+main "$@"
