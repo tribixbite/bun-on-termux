@@ -21,9 +21,7 @@ which termux-wake-lock termux-wake-unlock
 
 **Fixed script**: `~/.termux/boot/startup.sh`
 
-Creates a tmux session named `boot-session` with 4 windows (one per repo), each with 2 panes:
-- Left pane: idle shell in repo directory
-- Right pane: runs `cc` command
+Creates a tmux session named `boot-session` with 6 windows (one per repo), each running the `cc` command in the repo directory.
 
 ## How to Use
 

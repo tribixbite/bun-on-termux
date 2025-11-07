@@ -71,14 +71,14 @@ fi
 
 After boot, your tmux session now has 6 windows:
 
-| Window | Alias | Project | Panes |
-|--------|-------|---------|-------|
-| 0 | `tmb0` | cleverkeys | shell \| cc |
-| 1 | `tmb1` | CustomCamera | shell \| cc |
-| 2 | `tmb2` | Unexpected-Keyboard | shell \| cc |
-| 3 | `tmb3` | popcorn-mobile | shell \| cc |
-| 4 | `tmb4` | illustrate | shell \| cc |
-| 5 | `tmb5` | discord-irc | shell \| cc |
+| Window | Alias | Project | Command |
+|--------|-------|---------|---------|
+| 0 | `tmb0` | cleverkeys | cc |
+| 1 | `tmb1` | CustomCamera | cc |
+| 2 | `tmb2` | Unexpected-Keyboard | cc |
+| 3 | `tmb3` | popcorn-mobile | cc |
+| 4 | `tmb4` | illustrate | cc |
+| 5 | `tmb5` | discord-irc | cc |
 
 ## Usage
 

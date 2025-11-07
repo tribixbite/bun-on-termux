@@ -111,9 +111,7 @@ tmba swype/another-keyboard
 tmba /path/to/repo
 ```
 
-This creates a new tmux window with:
-- Left pane: shell in repo directory
-- Right pane: `cc` command running
+This creates a new tmux window running the `cc` command in the repo directory.
 
 **Example**:
 ```bash
