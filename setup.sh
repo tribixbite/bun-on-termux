@@ -41,6 +41,7 @@ mkdir -p ~/.config
 echo "📋 Installing Bun components..."
 cp binaries/* ~/.bun/bin/ 2>/dev/null || echo "ℹ️  No binaries to copy"
 cp wrappers/bun ~/.bun/bin/
+cp wrappers/bunx ~/.bun/bin/
 cp wrappers/bun-minimal ~/.bun/bin/
 chmod +x ~/.bun/bin/*
 

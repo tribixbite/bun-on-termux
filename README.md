@@ -144,10 +144,23 @@ Bunx: bunx pkg → wrapper → check PATH → check cache → install if needed 
 ## Binary Options
 
 ### Included Binary (Default)
-The repository includes a pre-tested ARM64 binary that's verified to work with glibc-runner.
+The repository includes a pre-tested ARM64 binary that's verified to work with glibc-runner and already configured for Termux compatibility.
 
 ### Official Bun Binary (Alternative)
-If you prefer to use the latest official Bun binary:
+If you prefer to use the latest official Bun binary from GitHub:
+
+#### GitHub Release URLs
+```bash
+# Latest release (automatically gets newest version)
+https://github.com/oven-sh/bun/releases/latest/download/bun-linux-aarch64.zip
+
+# Specific version URLs (replace {VERSION} with actual version)
+https://github.com/oven-sh/bun/releases/download/bun-v{VERSION}/bun-linux-aarch64.zip
+
+# Examples for specific versions:
+https://github.com/oven-sh/bun/releases/download/bun-v1.2.20/bun-linux-aarch64.zip
+https://github.com/oven-sh/bun/releases/download/bun-v1.2.0/bun-linux-aarch64.zip
+```
 
 #### Automated Script (Recommended)
 ```bash
@@ -156,20 +169,37 @@ chmod +x scripts/download-official-bun.sh
 ./scripts/download-official-bun.sh
 ```
 
-#### Manual Download
+#### Manual Download and Patching
 ```bash
 # Download latest official Bun for ARM64
-LATEST_URL=$(curl -s https://api.github.com/repos/oven-sh/bun/releases/latest | grep "browser_download_url.*bun-linux-aarch64.zip" | cut -d '"' -f 4)
-mkdir -p ~/.bun/downloads && cd ~/.bun/downloads
-wget "$LATEST_URL" -O bun-latest.zip
-unzip -o bun-latest.zip && cd bun-linux-aarch64
-cp bun ~/.bun/bin/buno && chmod +x ~/.bun/bin/buno
+wget https://github.com/oven-sh/bun/releases/latest/download/bun-linux-aarch64.zip
+unzip bun-linux-aarch64.zip
+cd bun-linux-aarch64
 
-# Test compatibility
-grun ~/.bun/bin/buno --version
+# Configure binary for Termux compatibility
+grun --configure ./bun
+
+# Verify library compatibility  
+grun --findlib ./bun
+
+# Test execution
+grun ./bun --version
+
+# If successful, install as working binary
+cp ./bun ~/.bun/bin/buno && chmod +x ~/.bun/bin/buno
+bun --version  # Test wrapper functionality
 ```
 
-**Note**: Official binaries may have different compatibility characteristics. The download script includes automatic testing and backup/restore functionality. See `docs/INSTALLATION.md` for detailed instructions.
+#### Binary Patching Process
+Official Bun binaries require configuration for Termux compatibility:
+
+1. **glibc-runner Configuration**: Patches ELF headers for Android compatibility
+2. **Library Resolution**: Ensures all required glibc libraries are found
+3. **Dynamic Linker Setup**: Configures proper linking environment
+
+**Important**: The included `buno` binary is already patched and configured. For detailed binary patching instructions, troubleshooting, and manual configuration processes, see [`docs/BINARY_PATCHING.md`](docs/BINARY_PATCHING.md).
+
+**Note**: Official binaries may have different compatibility characteristics. Always test thoroughly before replacing a working binary. The download script includes automatic testing and backup/restore functionality.
 
 ## Known Limitations
 

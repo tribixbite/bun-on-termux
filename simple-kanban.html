@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Kanban Board - Bun on Termux Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .kanban-board {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .column {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+        }
+        
+        .column-header {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #333;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 10px;
+        }
+        
+        .todo .column-header { border-bottom-color: #ff6b6b; }
+        .in-progress .column-header { border-bottom-color: #ffd93d; }
+        .done .column-header { border-bottom-color: #6bcf7f; }
+        
+        .task {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            cursor: move;
+        }
+        
+        .task:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+        }
+        
+        .task-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .task-description {
+            color: #666;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+        
+        .task-tag {
+            display: inline-block;
+            background: #e3f2fd;
+            color: #1976d2;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            margin-top: 8px;
+        }
+        
+        .add-task {
+            background: rgba(255, 255, 255, 0.3);
+            border: 2px dashed rgba(255, 255, 255, 0.5);
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            color: #666;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .add-task:hover {
+            background: rgba(255, 255, 255, 0.5);
+            border-color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .info {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 30px;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+        }
+        
+        .info h3 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .info p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 8px;
+        }
+        
+        .info code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚀 Bun on Termux Demo</h1>
+        <p>Simple Kanban Board - Demonstrating bunx and server capabilities</p>
+    </div>
+    
+    <div class="kanban-board">
+        <div class="column todo">
+            <div class="column-header">📋 To Do</div>
+            <div class="task">
+                <div class="task-title">Fix bunx implementation</div>
+                <div class="task-description">Ensure bunx works exactly like npx for temporary package execution</div>
+                <span class="task-tag">High Priority</span>
+            </div>
+            <div class="task">
+                <div class="task-title">Document grun patching</div>
+                <div class="task-description">Create comprehensive guide for binary patching with glibc-runner</div>
+                <span class="task-tag">Documentation</span>
+            </div>
+            <div class="add-task">+ Add Task</div>
+        </div>
+        
+        <div class="column in-progress">
+            <div class="column-header">⚡ In Progress</div>
+            <div class="task">
+                <div class="task-title">Repository documentation review</div>
+                <div class="task-description">Ensure all docs match actual implementation and fix inconsistencies</div>
+                <span class="task-tag">In Review</span>
+            </div>
+            <div class="task">
+                <div class="task-title">Binary compatibility testing</div>
+                <div class="task-description">Test various NPM packages with bunx on Termux</div>
+                <span class="task-tag">Testing</span>
+            </div>
+            <div class="add-task">+ Add Task</div>
+        </div>
+        
+        <div class="column done">
+            <div class="column-header">✅ Done</div>
+            <div class="task">
+                <div class="task-title">bunx working directory fix</div>
+                <div class="task-description">Fixed bunx to run commands from original directory, now matches npx output</div>
+                <span class="task-tag">Completed</span>
+            </div>
+            <div class="task">
+                <div class="task-title">Temporary directory cleanup</div>
+                <div class="task-description">Implemented proper cleanup with trap handlers</div>
+                <span class="task-tag">Completed</span>
+            </div>
+            <div class="task">
+                <div class="task-title">Environment variable passing</div>
+                <div class="task-description">bunx now properly passes environment variables to executed commands</div>
+                <span class="task-tag">Completed</span>
+            </div>
+            <div class="add-task">+ Add Task</div>
+        </div>
+    </div>
+    
+    <div class="info">
+        <h3>🔧 Bun on Termux Status</h3>
+        <p><strong>Server:</strong> Running via <code>bunx http-server</code></p>
+        <p><strong>bunx:</strong> ✅ Working with temporary execution and proper cleanup</p>
+        <p><strong>Environment:</strong> Termux Android with glibc-runner compatibility</p>
+        <p><strong>Repository:</strong> <a href="https://github.com/tribixbite/bun-on-termux">bun-on-termux</a></p>
+    </div>
+    
+    <script>
+        // Simple drag and drop functionality
+        let draggedElement = null;
+        
+        document.querySelectorAll('.task').forEach(task => {
+            task.draggable = true;
+            
+            task.addEventListener('dragstart', (e) => {
+                draggedElement = task;
+                task.style.opacity = '0.5';
+            });
+            
+            task.addEventListener('dragend', (e) => {
+                task.style.opacity = '1';
+                draggedElement = null;
+            });
+        });
+        
+        document.querySelectorAll('.column').forEach(column => {
+            column.addEventListener('dragover', (e) => {
+                e.preventDefault();
+            });
+            
+            column.addEventListener('drop', (e) => {
+                e.preventDefault();
+                if (draggedElement && column !== draggedElement.parentElement) {
+                    const addButton = column.querySelector('.add-task');
+                    column.insertBefore(draggedElement, addButton);
+                }
+            });
+        });
+        
+        // Add task functionality
+        document.querySelectorAll('.add-task').forEach(button => {
+            button.addEventListener('click', () => {
+                const taskTitle = prompt('Task title:');
+                if (taskTitle) {
+                    const taskDescription = prompt('Task description (optional):') || '';
+                    const task = document.createElement('div');
+                    task.className = 'task';
+                    task.draggable = true;
+                    task.innerHTML = `
+                        <div class="task-title">${taskTitle}</div>
+                        <div class="task-description">${taskDescription}</div>
+                        <span class="task-tag">New</span>
+                    `;
+                    
+                    // Add drag functionality to new task
+                    task.addEventListener('dragstart', (e) => {
+                        draggedElement = task;
+                        task.style.opacity = '0.5';
+                    });
+                    
+                    task.addEventListener('dragend', (e) => {
+                        task.style.opacity = '1';
+                        draggedElement = null;
+                    });
+                    
+                    button.parentElement.insertBefore(task, button);
+                }
+            });
+        });
+    </script>
+</body>
+</html>

@@ -9,6 +9,9 @@
 
 ## Package Manager Configuration
 
+### Switching to Pacman (termux-pacman)
+Termux has transitioned from `pkg` (apt-based) to `pacman` (Arch Linux package manager). See [Termux Wiki: Switching Package Manager](https://wiki.termux.com/wiki/Switching_package_manager) for details.
+
 ### Primary Package Manager: Pacman
 - **Active Manager**: `pacman` (via TERMUX_APP_PACKAGE_MANAGER)
 - **Format**: `pacman` (via TERMUX_MAIN_PACKAGE_FORMAT)
@@ -30,6 +33,224 @@
 1. **Primary**: `https://service.termux-pacman.dev/$repo/$arch`
 2. **Vietnam**: `https://mirror.meowsmp.net/termux-pacman/$repo/$arch`  
 3. **Germany**: `https://ftp.agdsn.de/termux-pacman/$repo/$arch`
+
+## Complete Pacman Usage Guide
+
+### Essential Commands
+
+#### Basic Operations
+```bash
+# Update package database
+pacman -Sy
+
+# Update package database and upgrade all packages
+pacman -Syu
+
+# Install a package
+pacman -S package-name
+
+# Install multiple packages
+pacman -S package1 package2 package3
+
+# Remove a package
+pacman -R package-name
+
+# Remove package with dependencies not required by other packages
+pacman -Rs package-name
+
+# Remove package with config files
+pacman -Rn package-name
+```
+
+#### Package Search & Information
+```bash
+# Search for packages
+pacman -Ss search-term
+
+# Search installed packages
+pacman -Qs search-term
+
+# Show package information
+pacman -Si package-name
+
+# Show installed package information
+pacman -Qi package-name
+
+# List all installed packages
+pacman -Q
+
+# List explicitly installed packages
+pacman -Qe
+
+# List orphan packages (dependencies no longer needed)
+pacman -Qdt
+
+# List files installed by package
+pacman -Ql package-name
+
+# Find which package owns a file
+pacman -Qo /path/to/file
+```
+
+#### Advanced Operations
+```bash
+# Force reinstall package
+pacman -S --overwrite='*' package-name
+
+# Install local package file
+pacman -U package-file.pkg.tar.xz
+
+# Download package without installing
+pacman -Sw package-name
+
+# Clean package cache (keep 1 version)
+pacman -Sc
+
+# Clean entire package cache
+pacman -Scc
+
+# Check for broken dependencies
+pacman -Dk
+
+# Verify package files
+pacman -Qk package-name
+```
+
+### Tips and Tricks
+
+#### Handling Conflicts
+```bash
+# When encountering file conflicts during upgrade
+pacman -Syu --overwrite='*'
+
+# For specific file conflicts
+pacman -S package-name --overwrite='/path/to/conflicting/file'
+```
+
+#### Package Groups
+```bash
+# Install entire package group
+pacman -S base-devel
+
+# List packages in a group
+pacman -Sg base-devel
+
+# Install group excluding specific packages
+pacman -S base-devel --ignore=package-to-skip
+```
+
+#### Maintenance Tasks
+```bash
+# Remove all orphan packages
+pacman -Rns $(pacman -Qtdq)
+
+# List packages by install size
+pacman -Qi | awk '/^Name/{name=$3} /^Installed Size/{print $4$5, name}' | sort -h
+
+# List recently installed packages
+expac --timefmt='%Y-%m-%d %T' '%l\t%n' | sort | tail -20
+
+# Backup package list
+pacman -Qqe > packages.txt
+
+# Restore packages from list
+pacman -S --needed - < packages.txt
+```
+
+#### Useful Aliases
+```bash
+# Add to ~/.bashrc or ~/.zshrc
+alias pacs='pacman -Ss'       # Search packages
+alias paci='pacman -S'        # Install package
+alias pacr='pacman -Rs'       # Remove package with deps
+alias pacu='pacman -Syu'      # Full system upgrade
+alias pacq='pacman -Q'        # Query installed packages
+alias pacf='pacman -Ql'       # List package files
+alias paco='pacman -Qdt'      # List orphans
+alias pacc='pacman -Scc'      # Clean cache
+```
+
+### Common Package Installations
+
+#### Development Tools
+```bash
+# Version control
+pacman -S git gh
+
+# Build essentials
+pacman -S base-devel cmake ninja
+
+# Languages and runtimes
+pacman -S python nodejs rust golang
+
+# Editors
+pacman -S vim neovim emacs nano
+```
+
+#### System Utilities
+```bash
+# Network tools
+pacman -S openssh wget curl nmap net-tools
+
+# File management
+pacman -S rsync rclone fzf ripgrep fd
+
+# System monitoring
+pacman -S htop btop ncdu neofetch
+
+# Compression
+pacman -S zip unzip tar p7zip
+```
+
+#### Remote Access (SSH)
+```bash
+# Install OpenSSH
+pacman -S openssh
+
+# Start SSH daemon
+sshd
+
+# Configure SSH (optional)
+# Edit ~/.ssh/sshd_config for custom settings
+
+# Set password for remote access
+passwd
+
+# Get device IP address
+ip addr show | grep inet
+
+# Connect from another device
+# ssh -p 8022 username@device-ip
+```
+
+### Troubleshooting Pacman Issues
+
+#### Database Lock
+```bash
+# If pacman is locked (another instance running)
+rm /data/data/com.termux/files/usr/var/lib/pacman/db.lck
+```
+
+#### Corrupted Database
+```bash
+# Refresh all package databases
+rm -rf /data/data/com.termux/files/usr/var/lib/pacman/sync
+pacman -Syy
+```
+
+#### Key Issues
+```bash
+# Refresh pacman keys
+pacman-key --init
+pacman-key --populate
+```
+
+#### Mirror Issues
+```bash
+# Edit mirror configuration
+nano /data/data/com.termux/files/usr/etc/pacman.conf
+# Comment out problematic mirrors or reorder them
+```
 
 ## Glibc Integration
 
