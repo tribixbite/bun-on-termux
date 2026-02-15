@@ -1,53 +1,136 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# Enhanced Bun wrapper for Termux - handles directory reading and environment variables
-# Uses bunfig.toml for configuration (backend=copyfile, etc.)
+# Enhanced Bun wrapper for Termux with glibc-runner
+# Fixes: env var passing (via /proc/self/environ preload), bun run script
+# handling, and CouldntReadCurrentDirectory by using a safe CWD.
 
-# Note: grun doesn't pass environment variables to processes by default
-# This is a known limitation of glibc-runner v2.0-3
-# Workaround: Applications need to use config files or alternative env methods
+_BUN="$HOME/.bun/bin/buno"
+_PRELOAD="$HOME/.bun/bin/env-preload.js"
+_BUNFIG="--config=$HOME/.bun/bin/bunfig.toml"
+_SAFE_DIR="$HOME/.bun/tmp"
+_ORIG_CWD="$(pwd)"
 
-# Handle package.json script execution (bun run fails with directory reading)
-if [ "$1" = "run" ] && [ -f "package.json" ] && [ -n "$2" ]; then
-    script_command=$(grep -o "\"$2\":[[:space:]]*\"[^\"]*\"" package.json 2>/dev/null | sed 's/.*: *"\([^"]*\)".*/\1/')
-    if [ -n "$script_command" ]; then
-        # Replace 'bun run' with direct execution in script commands
-        if echo "$script_command" | grep -q "bun run "; then
-            script_file=$(echo "$script_command" | sed 's/bun run //')
-            shift 2  # Remove "run" and script name
-            exec grun ~/.bun/bin/buno "$script_file" "$@"
+mkdir -p "$_SAFE_DIR" 2>/dev/null
+
+# Convert a potentially relative path to absolute using original CWD
+_abs_path() {
+    local p="$1"
+    if [ "${p#/}" = "$p" ]; then
+        echo "${_ORIG_CWD}/${p}"
+    else
+        echo "$p"
+    fi
+}
+
+# Convert all file-like args to absolute paths
+_resolve_args() {
+    _ABS_ARGS=()
+    for arg in "$@"; do
+        if [ "${arg#-}" = "$arg" ] && [ -f "$(_abs_path "$arg")" ]; then
+            _ABS_ARGS+=("$(_abs_path "$arg")")
         else
-            # Execute script directly (like "./build.sh")
-            shift  # Remove "run"  
-            exec $script_command "$@"
+            _ABS_ARGS+=("$arg")
+        fi
+    done
+}
+
+# Run buno via grun from safe CWD with env preload for JS execution
+# Filters the non-fatal "Cannot read directory" noise from stderr
+_bun_js() {
+    _resolve_args "$@"
+    cd "$_SAFE_DIR" 2>/dev/null
+    exec grun "$_BUN" --preload "$_PRELOAD" "$_BUNFIG" "${_ABS_ARGS[@]}" 2> >(grep -v "Cannot read directory" >&2)
+}
+
+# Run buno via grun from safe CWD for non-JS commands (install, etc.)
+_bun_cmd() {
+    _resolve_args "$@"
+    cd "$_SAFE_DIR" 2>/dev/null
+    exec grun "$_BUN" "$_BUNFIG" "${_ABS_ARGS[@]}" 2> >(grep -v "Cannot read directory" >&2)
+}
+
+# --- Passthrough flags that don't need preload or config ---
+case "$1" in
+    --version|--revision|--help|-h)
+        cd "$_SAFE_DIR" 2>/dev/null
+        exec grun "$_BUN" "$1"
+        ;;
+esac
+
+# --- bun run <script-name|file> ---
+if [ "$1" = "run" ] && [ -n "$2" ]; then
+    # Check if $2 is a file path
+    target="$(_abs_path "$2")"
+    if [ -f "$target" ]; then
+        shift 2
+        _bun_js "$target" "$@"
+    fi
+
+    # Try package.json scripts
+    pjson="$(_abs_path package.json)"
+    if [ -f "$pjson" ]; then
+        script_name="$2"
+        script_command=$(grep -o "\"${script_name}\":[[:space:]]*\"[^\"]*\"" "$pjson" 2>/dev/null \
+            | sed 's/.*: *"\([^"]*\)".*/\1/')
+
+        if [ -n "$script_command" ]; then
+            shift 2  # Remove "run" and script name, keep extra args
+
+            # Script invokes bun: route through wrapper to get env + safe CWD
+            if echo "$script_command" | grep -q "^bun run "; then
+                script_file="$(_abs_path "${script_command#bun run }")"
+                _bun_js "$script_file" "$@"
+            elif echo "$script_command" | grep -q "^bun "; then
+                _bun_js ${script_command#bun } "$@"
+            else
+                # Shell command: execute in Termux shell (has native env vars)
+                cd "$_ORIG_CWD" 2>/dev/null
+                if [ $# -gt 0 ]; then
+                    eval "$script_command" '"$@"'
+                else
+                    eval "$script_command"
+                fi
+                exit $?
+            fi
         fi
     fi
 fi
 
-# Handle global installs - bunfig.toml backend setting is ignored for global installs
-# Must explicitly pass --backend=copyfile for Termux compatibility
-if [ "$1" = "install" ] || [ "$1" = "i" ] || [ "$1" = "add" ]; then
-    # Check if -g or --global flag is present
-    for arg in "$@"; do
-        if [ "$arg" = "-g" ] || [ "$arg" = "--global" ]; then
-            # Check if --backend is already specified
-            backend_specified=false
-            for check_arg in "$@"; do
-                if echo "$check_arg" | grep -q "^--backend="; then
-                    backend_specified=true
-                    break
-                fi
-            done
-            
-            # Add --backend=copyfile if not already specified
-            if [ "$backend_specified" = false ]; then
-                exec grun ~/.bun/bin/buno "$@" --backend=copyfile
-            fi
-            break
-        fi
-    done
+# --- bun <file> (direct file execution) ---
+if [ -n "$1" ] && [ "${1#-}" = "$1" ]; then
+    target="$(_abs_path "$1")"
+    if [ -f "$target" ]; then
+        shift
+        _bun_js "$target" "$@"
+    fi
 fi
 
-# For everything else, just use grun with working binary
-# bunfig.toml handles backend=copyfile automatically for local installs
-# Note: Environment variables are not passed through grun - this is a limitation
-exec grun ~/.bun/bin/buno "$@"
+# --- Commands that execute JS and need env preload ---
+case "$1" in
+    test|eval|repl|build) _bun_js "$@" ;;
+    -e) _bun_js "$@" ;;
+esac
+
+# --- bunx / bun x ---
+if [ "$1" = "x" ]; then
+    shift
+    [ -n "$1" ] && _bun_cmd x "$@" || _bun_cmd x --help
+fi
+
+# --- Package management (install, add, remove, update) ---
+if [ "$1" = "install" ] || [ "$1" = "i" ] || [ "$1" = "add" ] || [ "$1" = "remove" ] || [ "$1" = "rm" ] || [ "$1" = "update" ]; then
+    has_global=false
+    has_backend=false
+    for arg in "$@"; do
+        case "$arg" in
+            -g|--global) has_global=true ;;
+            --backend=*) has_backend=true ;;
+        esac
+    done
+    if [ "$has_global" = true ] && [ "$has_backend" = false ]; then
+        _bun_cmd "$@" --backend=copyfile
+    fi
+    _bun_cmd "$@"
+fi
+
+# --- Default: pass through with env preload ---
+_bun_js "$@"

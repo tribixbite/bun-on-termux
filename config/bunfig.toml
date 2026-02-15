@@ -13,11 +13,16 @@ auto = false
 # Production optimizations
 production = false
 # Optional dependencies (can be problematic on Termux)
-optional = true
+# optional = true
 # Peer dependencies handling
 peer = false
 # Development dependencies in development mode
-dev = true
+dev = fals
+ # true
+
+[install.cache]
+# the directory to use for the cache
+dir = "~/.bun/install/cache"
 
 [run]
 # Shell to use for script execution
@@ -26,6 +31,8 @@ shell = "system"
 cwd = "."
 # Silent mode for cleaner output
 silent = false
+# Preload env-fix for glibc-runner (ld.so strips environ, this restores it)
+preload = ["/data/data/com.termux/files/home/.bun/bin/env-preload.js"]
 
 [test]
 # Test runner configuration
