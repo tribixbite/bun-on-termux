@@ -2,192 +2,201 @@
 
 ## Overview
 
-This document explains the technical architecture of how Bun works on Termux Android.
+Bun is a glibc-compiled binary. Android uses bionic libc. To bridge this gap, we use `glibc-runner` (`grun`) which invokes glibc's dynamic linker (`ld-linux-aarch64.so.1`) as a program loader. A bash wrapper script and a JS preload script handle the side effects of this approach.
 
-## Core Components
+## Component diagram
 
-### 1. glibc-runner (grun)
-- **Purpose**: Compatibility layer for running glibc binaries on Android bionic
-- **Version**: v2.0-3 from upds branch
+```
+User command
+     |
+     v
+~/.bun/bin/bun          (bash wrapper script)
+     |
+     |- saves original CWD
+     |- resolves relative paths to absolute
+     |- cd ~/.bun/tmp (safe CWD)
+     |
+     v
+grun                    (glibc-runner: exec ld.so binary)
+     |
+     v
+ld-linux-aarch64.so.1   (glibc dynamic linker)
+     |
+     |- zeroes C environ pointer (side effect)
+     |- loads glibc shared libraries
+     |
+     v
+buno                    (real bun binary, v1.3.9)
+     |
+     |- --preload env-preload.js
+     |     |
+     |     |- reads /proc/self/environ
+     |     |- populates process.env
+     |
+     v
+User's JS/TS code       (full process.env available)
+```
+
+## Components
+
+### 1. Wrapper script (`~/.bun/bin/bun`)
+
+**Source**: `wrappers/bun-minimal` (137 lines)
+
+The wrapper is the entry point for all `bun` commands. It handles:
+
+**CWD management**: Saves original CWD, converts all file-like arguments to absolute paths, then `cd`s to `~/.bun/tmp` before exec. This avoids the `CouldntReadCurrentDirectory` error caused by glibc's `getcwd()` failing to traverse `/data/data/` paths.
+
+**Command routing**:
+- `--version`, `--help`: Direct passthrough to buno (no preload needed)
+- `bun run <file>`: Detects file, shifts args, calls `_bun_js` with absolute path
+- `bun run <script-name>`: Parses `package.json` to extract the script command, then:
+  - If script is `bun run <file>` or `bun <args>`: routes back through `_bun_js`
+  - If script is a shell command: `eval`s in native Termux shell (preserves env vars)
+- `bun <file>`: Detects file argument, routes to `_bun_js`
+- `test`, `eval`, `repl`, `build`, `-e`: Routes to `_bun_js` (needs env preload)
+- `bun x` / bunx: Routes to `_bun_cmd` (no preload, uses grun only)
+- `install`, `add`, `remove`, `update`: Routes to `_bun_cmd`, auto-adds `--backend=copyfile` for global installs
+
+**Execution modes**:
+- `_bun_js()`: `exec grun buno --preload env-preload.js --config=bunfig.toml [args]` — for JS/TS execution
+- `_bun_cmd()`: `exec grun buno --config=bunfig.toml [args]` — for non-JS commands (install, etc.)
+
+**Stderr filtering**: Both modes pipe stderr through `grep -v "Cannot read directory"` to suppress non-fatal noise from glibc's directory traversal attempts.
+
+### 2. Environment preload (`env-preload.js`)
+
+**Problem**: When `ld.so` is invoked as a program loader (not as `PT_INTERP`), glibc's `__libc_start_main` zeroes the C `environ` pointer. The kernel's `/proc/self/environ` still has all 100+ environment variables, but `process.env` in JS shows 0 keys.
+
+**Solution**: A preload script runs before user code:
+
+```javascript
+if (Object.keys(process.env).length === 0) {
+    const data = fs.readFileSync("/proc/self/environ", "utf8");
+    for (const entry of data.split("\0")) {
+        const idx = entry.indexOf("=");
+        if (idx > 0) {
+            process.env[entry.substring(0, idx)] = entry.substring(idx + 1);
+        }
+    }
+}
+```
+
+The guard `Object.keys(process.env).length === 0` ensures this only runs when env vars are actually missing (i.e., via grun). If bun ever runs natively without grun, the preload is a no-op.
+
+### 3. Bun binary (`buno`)
+
+- **File**: `~/.bun/bin/buno`
+- **Variant**: `bun-linux-aarch64` (glibc, not musl)
+- **Version**: v1.3.9
+- **Size**: ~100MB
+- **Source**: Official [oven-sh/bun](https://github.com/oven-sh/bun) GitHub releases
+
+Named `buno` ("bun original") so the wrapper script can use the standard `bun` command name.
+
+### 4. Configuration (`bunfig.toml`)
+
+**Location**: `~/.bun/bin/bunfig.toml` (referenced via `--config=` flag)
+
+Key settings:
+- `[install] backend = "copyfile"` — Termux can't hardlink across filesystems; copyfile works everywhere
+- `[install] auto = false` — disable lifecycle scripts that may fail on Android
+- `[run] preload = ["/path/to/env-preload.js"]` — backup preload config (wrapper's `--preload` flag is the primary mechanism)
+- `[run] shell = "system"` — use Termux's native shell for script execution
+
+Note: The bunfig.toml `[run] preload` setting has a chicken-and-egg problem. Bun needs `HOME` and `BUN_INSTALL` env vars to locate the config file, but those vars are only available after the preload runs. The `--preload` CLI flag in the wrapper bypasses this.
+
+### 5. glibc-runner (`grun`)
+
+- **Package**: `glibc-runner` via `pacman -S glibc-runner`
 - **Location**: `/data/data/com.termux/files/usr/bin/grun`
-- **Function**: Patches binary ELF headers and sets up glibc environment
+- **Glibc root**: `/data/data/com.termux/files/usr/glibc/`
+- **Dynamic linker**: `/data/data/com.termux/files/usr/glibc/lib/ld-linux-aarch64.so.1`
 
-### 2. Bun Binary (buno)
-- **Type**: ARM64 musl-based binary 
-- **Location**: `~/.bun/bin/buno`
-- **Compatibility**: Works with glibc-runner for Android execution
-
-### 3. Wrapper Script
-- **Purpose**: Handles Termux-specific issues and compatibility
-- **Location**: `~/.bun/bin/bun`
-- **Key Functions**:
-  - Directory reading workarounds
-  - Global install backend enforcement
-  - Package.json script parsing
-
-### 4. Configuration Files
-- **Global**: `~/bunfig.toml` - Default settings for all operations
-- **Local**: `./bunfig.toml` - Project-specific overrides
-- **Function**: Bun reads and respects these config files properly
-- **Key Settings**: `backend=copyfile` for Termux compatibility
-
-### 5. Bunx Wrapper
-- **Purpose**: Package execution without permanent installation
-- **Location**: `~/.bun/bin/bunx`
-- **Key Functions**:
-  - Binary detection in PATH and node_modules
-  - Smart caching in `~/.bun/tmp/bunx-<uid>-<package>@<version>/`
-  - 24-hour staleness detection
-  - Binary name mappings (typescript → tsc)
-
-## Execution Flow
-
-### Direct File Execution
-```
-bun script.js → wrapper → grun → buno → script execution
-```
-- ✅ Works reliably
-- ✅ No directory reading required
-- ✅ Fast execution path
-
-### Package.json Scripts (`bun run`)
-```
-bun run dev → wrapper detects → parses package.json → direct execution
-```
-- ⚠️ Requires wrapper intervention
-- 🔧 Bypasses Bun's `configureEnvForRun()` function
-- ✅ Works through script parsing workaround
-
-### Package Management
-```
-# Local installs
-bun install → wrapper → grun → buno + bunfig.toml backend
-
-# Global installs  
-bun i -g → wrapper → grun → buno + --backend=copyfile (forced)
-```
-- ✅ Local installs use bunfig.toml
-- ✅ Global installs get forced copyfile backend
-
-### Package Execution (bunx)
-```
-bunx package → bunx wrapper → check PATH → check cache → install if needed → execute
-```
-- ✅ Smart caching prevents repeated installations
-- ✅ Existing binaries are detected and used directly
-- ✅ Environment variables pass through properly
-- ✅ Automatic staleness detection and cleanup
-
-## Technical Challenges
-
-### 1. Directory Reading (Core Issue)
-**Problem**: Android filesystem restrictions prevent `readDirInfo()` calls
-**Affected**: `bun run` commands, config file reading
-**Solution**: Wrapper-based workarounds and direct execution
-
-### 2. Environment Variable Isolation
-**Problem**: glibc-runner doesn't pass environment variables
-**Root Cause**: `exec ld.so $@` doesn't preserve parent environment
-**Workaround**: Config files, hardcoded values, or wrapper scripts
-
-### 3. Global Install Backend
-**Problem**: Global installs ignore bunfig.toml by Bun design
-**Reason**: Global operations are project-independent and don't read local config
-**Solution**: Wrapper automatically adds `--backend=copyfile` for all global installs
-
-### 4. Binary Compatibility
-**Problem**: Some Bun binaries segfault on Android
-**Solution**: Use working `buno` binary instead of standard builds
-
-## Code Paths
-
-### Successful Execution Path
-1. **Direct execution**: `maybeOpenWithBunJS()` → works
-2. **Package management**: Uses copyfile backend → works  
-3. **Building/bundling**: Standard Bun operations → works
-
-### Problematic Path (Fixed)
-1. **Script running**: `RunCommand.exec()` → `configureEnvForRun()` → `readDirInfo()` → FAILS
-2. **Workaround**: Wrapper parses package.json and uses direct execution
-
-## Performance Characteristics
-
-### Memory Usage
-- **grun overhead**: ~5-10MB additional memory
-- **Wrapper overhead**: Negligible (<1MB)
-- **Binary size**: ~90MB for full Bun installation
-
-### Execution Speed
-- **Direct execution**: Near-native performance
-- **Package installs**: Slower due to copyfile vs hardlink
-- **Script parsing**: Minimal overhead from wrapper
-
-### Network Performance
-- **Registry access**: Standard HTTP performance
-- **Package downloads**: Limited by mobile network
-- **Parallel installs**: Works with `--concurrent` flags
-
-## Security Considerations
-
-### Filesystem Access
-- **Permissions**: Runs within Termux sandbox
-- **Path access**: Limited to Termux directories
-- **Root access**: Not required or used
-
-### Binary Verification
-- **ELF patching**: grun modifies binary headers
-- **Library loading**: Uses controlled glibc environment
-- **Execution**: No elevated privileges needed
-
-## Debugging Architecture
-
-### Logging Levels
+Core execution (from `glibc-runner.sh` line 276):
 ```bash
-# Basic wrapper debug
-WRAPPER_DEBUG=1 bun command
-
-# grun strace debugging  
-grun --debug 3 ~/.bun/bin/buno command
-
-# Comprehensive testing
-./test-bun-comprehensive.sh
+exec $(_glibc-runner_debug) ld.so $@
 ```
 
-### Common Debug Points
-1. **Wrapper logic**: Check argument parsing and flow control
-2. **grun execution**: Monitor ELF patching and library loading
-3. **Directory access**: Test filesystem permission issues
-4. **Environment passing**: Verify variable inheritance
+This invokes the glibc dynamic linker as a program, passing the target binary as an argument. The linker loads all required glibc shared libraries and transfers control to the binary.
 
-## Future Improvements
+## Execution flows
 
-### Potential Optimizations
-1. **Direct glibc integration**: Eliminate grun overhead
-2. **Source patches**: Fix directory reading in Bun source
-3. **Native Android build**: ARM64 Android-specific Bun binary
-4. **Environment bridging**: Better variable passing through grun
+### `bun script.ts`
 
-### Limitations to Address
-1. **Build compilation**: `bun build --compile` restrictions
-2. **Hot reload**: Filesystem watching limitations  
-3. **Test runner**: Some test features may be limited
-4. **Development server**: Port binding and network access
+```
+1. Wrapper: _ORIG_CWD=$(pwd), _abs_path("script.ts") -> /full/path/script.ts
+2. Wrapper: file exists? yes -> shift, _bun_js "/full/path/script.ts"
+3. _bun_js: cd ~/.bun/tmp
+4. _bun_js: exec grun buno --preload env-preload.js --config=bunfig.toml /full/path/script.ts
+5. grun: exec ld.so buno --preload env-preload.js --config=bunfig.toml /full/path/script.ts
+6. buno: loads env-preload.js -> reads /proc/self/environ -> populates process.env
+7. buno: executes /full/path/script.ts with full environment
+```
 
-## Integration Points
+### `bun run dev` (package.json script: `"dev": "bun run src/index.ts"`)
 
-### Package Managers
-- **npm compatibility**: Full package.json support
-- **yarn compatibility**: Most features work
-- **pnpm integration**: Limited compatibility
+```
+1. Wrapper: $1="run", $2="dev" -> not a file
+2. Wrapper: finds package.json -> extracts "bun run src/index.ts"
+3. Wrapper: script starts with "bun run " -> extract "src/index.ts"
+4. Wrapper: _abs_path("src/index.ts") -> /full/path/src/index.ts
+5. Wrapper: shift 2, _bun_js "/full/path/src/index.ts"
+6. (continues as direct file execution above)
+```
 
-### Development Tools
-- **TypeScript**: Full support through Bun runtime
-- **Bundling**: Works with copyfile backend
-- **Testing**: Basic test runner functionality
-- **Linting**: External tools work normally
+### `bun run dev` (package.json script: `"dev": "echo hello && node server.js"`)
 
-### System Integration
-- **Shell integration**: Works through Termux bash
-- **File associations**: Can be configured
-- **PATH integration**: Automatic through setup
-- **Process management**: Standard Unix signals
+```
+1. Wrapper: $1="run", $2="dev" -> not a file
+2. Wrapper: finds package.json -> extracts "echo hello && node server.js"
+3. Wrapper: script doesn't start with "bun" -> shell command
+4. Wrapper: cd back to original CWD
+5. Wrapper: eval "echo hello && node server.js"
+6. Executes in native Termux bash (full env vars available natively)
+```
+
+### `bun install`
+
+```
+1. Wrapper: $1="install" -> package management
+2. Wrapper: no -g flag -> _bun_cmd "install"
+3. _bun_cmd: cd ~/.bun/tmp
+4. _bun_cmd: exec grun buno --config=bunfig.toml install
+5. buno: reads bunfig.toml -> backend=copyfile
+6. buno: resolves, downloads, extracts packages using copyfile
+```
+
+## Why not patchelf?
+
+We investigated using `patchelf` to modify the bun binary's ELF headers to embed the glibc interpreter path directly, which would eliminate the grun wrapper entirely. This failed for two reasons:
+
+1. **libc.so is a linker script**: glibc's `libc.so` in Termux is a GNU ld text script (not an ELF binary). It directs the linker to load `libc.so.6`. When patchelf'd binaries try to load `libc.so` directly via `DT_NEEDED`, they get "invalid ELF header" errors.
+
+2. **LD_PRELOAD conflict**: Termux's `libtermux-exec-ld-preload.so` is a bionic library. When a patchelf'd binary runs with glibc's dynamic linker, it tries to load this bionic preload library through glibc, causing segfaults.
+
+## Performance characteristics
+
+### Overhead breakdown
+
+| Layer | Overhead | Notes |
+|-------|----------|-------|
+| Wrapper (bash) | ~5ms | Argument parsing, path resolution |
+| grun | ~10ms | Shell script, ld.so setup |
+| ld.so | ~20ms | Dynamic library loading |
+| env-preload.js | ~2ms | Read /proc/self/environ, parse, populate |
+| **Total overhead** | **~37ms** | Added to every bun invocation |
+
+Despite this overhead, bun still starts faster than native Node.js on Termux (~85ms vs ~137ms) because bun's runtime itself is lighter.
+
+### Package install performance
+
+`bun install` uses `copyfile` backend instead of the default `hardlink`. This is ~2-3x slower than hardlink on native Linux, but still ~2x faster than npm on Termux. The bottleneck is I/O, not CPU.
+
+## Security notes
+
+- The wrapper runs within Termux's sandbox (no root required)
+- `/proc/self/environ` is readable only by the process owner (same UID)
+- The preload script only activates when `process.env` is empty (grun scenario)
+- No binary patching or ELF modification is performed (grun handles this transparently)
+- All file operations stay within `~/.bun/` and the user's project directories

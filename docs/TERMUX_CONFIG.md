@@ -306,45 +306,34 @@ export TERMUX_EXEC__LOG_LEVEL=[1-4]
 ### Installation Structure
 ```
 ~/.bun/bin/
-├── bun -> bun.glibc.sh           # Main entry point (symlink)
-├── bun.glibc.sh                  # Enhanced wrapper script  
-├── buno                          # Working Bun binary (92MB musl)
-├── bunx                          # Package execution wrapper
-└── [various legacy binaries]     # Historical builds and tests
+├── bun                # Wrapper script (bash, handles CWD + env + routing)
+├── buno               # Real Bun binary (v1.3.9, ~100MB glibc aarch64)
+├── env-preload.js     # Preload: restores process.env from /proc/self/environ
+└── bunfig.toml        # Config: copyfile backend, preload, Termux defaults
 ```
 
-### Minimal Bun Wrapper Features
+### Wrapper Architecture
 
-#### 1. **Simplified Architecture**
+The wrapper (`~/.bun/bin/bun`, source: `wrappers/bun-minimal`, ~137 lines) handles:
+
+1. **Safe CWD**: Saves original directory, converts all file args to absolute paths, `cd`s to `~/.bun/tmp` before exec
+2. **Env preload**: Passes `--preload env-preload.js` for JS/TS execution (restores process.env)
+3. **`bun run` parsing**: Extracts scripts from package.json, routes `bun`-prefixed scripts through wrapper, `eval`s shell commands natively
+4. **Global install fix**: Auto-adds `--backend=copyfile` for `-g` installs
+5. **Config passthrough**: `--config=~/.bun/bin/bunfig.toml` on all commands
+6. **Stderr filtering**: Suppresses "Cannot read directory" noise
+
+#### Package Management
 ```bash
-bun -> bun-minimal          # 25-line wrapper script
-bunx -> bunx-minimal        # 4-line wrapper script  
+bun install       # bunfig.toml backend=copyfile is applied
+bun add pkg       # bunfig.toml backend=copyfile is applied
+bun i -g pkg      # wrapper adds --backend=copyfile explicitly
 ```
 
-#### 2. **Configuration-Driven Approach**
-- **bunfig.toml**: Read and respected by Bun for local installs (backend=copyfile works)
-- **grun integration**: Direct execution of working `buno` binary via glibc-runner
-- **Minimal logic**: Only handles essential `bun run` directory reading issues
-
-#### 3. **Package Management (via bunfig.toml)**
-```bash
-bun install       # bunfig.toml backend=copyfile is read and applied
-bun add pkg       # bunfig.toml backend=copyfile is read and applied  
-bun i -g pkg      # Global installs ignore bunfig.toml (wrapper adds --backend=copyfile)
-```
-
-#### 4. **Build Process Compatibility**
+#### Build Process
+- `bun build` works for bundling (not `--compile`)
 - Custom build.sh scripts handle compilation limitations
-- `bun run build` executes project-specific build scripts
-- No wrapper complexity needed - bunfig.toml + grun handles everything else
-
-### Minimal Bun Wrapper Analysis
-**File**: `~/.bun/bin/bun-minimal` 
-**Size**: 25 lines (vs 200+ lines in previous version)
-**Core Logic**:
-- `bun run [script]` → Parse package.json and execute directly
-- Everything else → `exec grun ~/.bun/bin/buno "$@"`
-- Local install configuration handled by bunfig.toml (which Bun reads properly)
+- `bun run build` routes through wrapper's package.json parser
 
 ## Package Installation Verification
 
@@ -375,7 +364,7 @@ pacman -Si package-name
 ## Development Environment Integration
 
 ### Node.js/JavaScript Runtime
-- **Primary Runtime**: Bun v1.2.20 (native ARM64 glibc via grun)
+- **Primary Runtime**: Bun v1.3.9 (ARM64 glibc via grun)
 - **Package Manager**: Bun with enhanced Termux wrapper
 - **Compatibility**: Full ES modules, CommonJS, TypeScript support
 - **Performance**: Native execution speed via glibc-runner
@@ -456,9 +445,9 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 
 - **Package Manager**: Pacman with 7 active repositories
 - **Glibc Integration**: glibc-runner v2.0-3 operational
-- **JavaScript Runtime**: Bun v1.2.20 with enhanced Termux wrapper  
+- **JavaScript Runtime**: Bun v1.3.9 with enhanced Termux wrapper
 - **Build Systems**: Custom solutions for compilation limitations
 - **Package Installation**: Verified working with automatic conflict resolution
 
-**Last Updated**: 2025-08-18
+**Last Updated**: 2025-02-15
 **Configuration Status**: Production Ready

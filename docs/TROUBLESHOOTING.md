@@ -1,231 +1,262 @@
 # Troubleshooting Bun on Termux
 
-## Common Issues
+## Environment variables empty (`process.env` has 0 keys)
 
-### "CouldntReadCurrentDirectory" Error
+**Symptom**: `process.env.HOME`, `process.env.PATH`, etc. are all `undefined`.
 
-**Symptom**: `bun run <script>` fails with directory reading error
-**Cause**: Android filesystem restrictions in Bun's `configureEnvForRun()`
-**Solution**: Use the wrapper script which handles this automatically
+**Cause**: glibc's `ld.so`, when invoked as a program loader by grun, zeroes the C `environ` pointer. The kernel-level environment in `/proc/self/environ` is intact but the C runtime doesn't expose it.
 
-```bash
-# This fails:
-bun run dev
-
-# This works (wrapper handles it):
-~/.bun/bin/bun run dev
-```
-
-### Environment Variables Not Passed
-
-**Symptom**: `process.env.VARIABLE` is undefined in Bun scripts
-**Cause**: glibc-runner doesn't pass environment variables to child processes
-**Solutions**:
-1. Use config files instead of environment variables
-2. Hardcode values temporarily
-3. Create wrapper scripts that set variables
-4. Use `bunx` which properly passes environment variables
+**Fix**: The wrapper script passes `--preload env-preload.js` which reads `/proc/self/environ` and populates `process.env`. If you're seeing empty env vars, check:
 
 ```bash
-# Won't work with main bun wrapper:
-export API_KEY=abc123
-bun script.js
+# Verify the preload script exists
+ls -la ~/.bun/bin/env-preload.js
 
-# Works with bunx:
-export API_KEY=abc123
-bunx your-cli-tool
+# Verify the wrapper is using --preload
+head -50 ~/.bun/bin/bun | grep preload
 
-# Workaround - use config file:
-echo '{"apiKey": "abc123"}' > config.json
-bun script.js
+# Test env vars directly
+bun -e 'console.log(Object.keys(process.env).length, "env vars")'
+# Should show 100+ env vars
 ```
 
-### Segmentation Faults
+If env vars are still missing, ensure you're using the wrapper (`bun`) and not calling `grun buno` directly.
 
-**Symptom**: Bun crashes with segfault
-**Cause**: Wrong binary being used
-**Solution**: Ensure you're using the working `buno` binary
+## "CouldntReadCurrentDirectory" error
+
+**Symptom**: `error: An internal error occurred (CouldntReadCurrentDirectory)` or `error loading current directory`
+
+**Cause**: Bun calls `std::env::current_dir()` which uses glibc's `getcwd()`. When running through ld.so, the directory traversal through `/data/data/com.termux/files/...` fails.
+
+**Fix**: The wrapper handles this by `cd`-ing to `~/.bun/tmp` before exec and converting all file args to absolute paths. If you see this error:
 
 ```bash
-# Check which binary the wrapper uses:
-head -n 10 ~/.bun/bin/bun
+# Ensure the safe directory exists
+mkdir -p ~/.bun/tmp
 
-# Should show grun ~/.bun/bin/buno
+# Verify you're using the wrapper, not calling buno directly
+which bun
+# Should show ~/.bun/bin/bun
+
+# Test from any directory
+cd /some/project && bun --version
 ```
 
-### Package Installation Issues
+## "Cannot read directory" stderr noise
 
-**Symptom**: `bun install` hangs or fails
-**Cause**: Network issues or lifecycle scripts
-**Solutions**:
-1. Use `--ignore-scripts` flag
-2. Configure `bunfig.toml` with `auto = false` (this file is read by Bun)
-3. Use `backend = "copyfile"` in bunfig.toml for Termux compatibility
+**Symptom**: Warnings like `Cannot read directory '/data/data/...'` on stderr.
+
+**Cause**: Even with the safe CWD, bun's internal path resolution attempts to traverse restricted Android paths. These errors are non-fatal.
+
+**Fix**: The wrapper filters these via `2> >(grep -v "Cannot read directory" >&2)`. If you still see them, you may be calling bun through a script that bypasses the wrapper.
+
+## `bun run <script>` fails or runs wrong command
+
+**Symptom**: `bun run dev` doesn't execute the script from package.json, or runs with wrong arguments.
+
+**Cause**: The wrapper parses `package.json` scripts using `grep`/`sed`. Complex scripts with nested quotes, multi-line values, or uncommon JSON formatting may not parse correctly.
+
+**Fix**:
 
 ```bash
-bun install --ignore-scripts
-# or
-bun i --backend=copyfile
+# Check what the wrapper sees
+grep '"dev"' package.json
+
+# For complex scripts, use a shell script file instead:
+# package.json: "dev": "bash scripts/dev.sh"
+
+# Or run the file directly:
+bun src/index.ts
 ```
 
-### Build/Compilation Failures
+## `bun add` shows EACCES permission errors
 
-**Symptom**: `bun build --compile` fails
-**Cause**: ARM64 Android limitations
-**Solutions**:
-1. Use regular bundling without compilation
-2. Create shell script wrappers instead
+**Symptom**: `EACCES: Permission denied while installing <package>` but the install still succeeds.
+
+**Cause**: Stale entries in `~/.bun/install/cache/` with different ownership or permissions from a previous session or different execution context.
+
+**Fix**:
+
+```bash
+# Clear the install cache
+rm -rf ~/.bun/install/cache
+
+# Or fix permissions
+chmod -R u+rw ~/.bun/install/cache/
+```
+
+## `bunx` / `bun x` fails
+
+**Symptom**: `bun x cowsay` errors with `CouldntReadCurrentDirectory`.
+
+**Cause**: The bunx execution path tries to read the working directory for package resolution. The safe-CWD workaround only partially helps because bunx needs to find local `node_modules/.bin` relative to the project.
+
+**Workaround**: Use `npx` as a fallback:
+
+```bash
+# Instead of:
+bunx cowsay "hello"
+
+# Use:
+npx cowsay "hello"
+```
+
+## Segmentation faults
+
+**Symptom**: Bun crashes with segfault immediately on startup.
+
+**Cause**: Usually one of:
+1. Wrong binary variant (x86 instead of aarch64)
+2. Corrupted binary
+3. glibc-runner not properly installed
+4. Termux's `LD_PRELOAD` conflicting with glibc
+
+**Fix**:
+
+```bash
+# Check binary architecture
+file ~/.bun/bin/buno
+# Should show: ELF 64-bit LSB executable, ARM aarch64
+
+# Test grun directly
+grun ~/.bun/bin/buno --version
+
+# Check glibc-runner installation
+grun --version
+pacman -Q glibc-runner
+
+# If LD_PRELOAD causes issues, grun should handle this,
+# but you can test without it:
+unset LD_PRELOAD
+grun ~/.bun/bin/buno --version
+```
+
+## `bun build --compile` fails
+
+**Symptom**: Single-file compilation errors or the compiled binary won't execute.
+
+**Cause**: Android filesystem restrictions prevent the compiled binary from running natively. The compiled output would also need grun to execute.
+
+**Workaround**: Use bundling without compilation:
 
 ```bash
 # Instead of:
 bun build --compile --outfile=app index.ts
 
-# Use:
+# Bundle to JS, then run with bun:
 bun build --outdir=dist index.ts
-echo '#!/bin/bash\nbun dist/index.js "$@"' > app
+
+# Create a launcher script:
+echo '#!/bin/bash
+bun dist/index.js "$@"' > app
 chmod +x app
 ```
 
-## Advanced Debugging
+## Package install hangs or is slow
 
-### Check grun Status
+**Symptom**: `bun install` takes very long or hangs.
+
+**Cause**: Network issues, lifecycle scripts hanging, or the `hardlink` backend failing silently.
+
+**Fix**:
 
 ```bash
-grun --version
-grun --help
+# Ensure copyfile backend is being used (check bunfig.toml)
+grep backend ~/.bun/bin/bunfig.toml
+# Should show: backend = "copyfile"
+
+# Skip lifecycle scripts
+bun install --ignore-scripts
+
+# Force copyfile backend explicitly
+bun install --backend=copyfile
+
+# Check network
+curl -I https://registry.npmjs.org/
 ```
 
-### Verify Binary Compatibility
+## `+` operator broken in `bun -e`
+
+**Symptom**: `bun -e 'console.log(1+1)'` outputs `1` instead of `2`, or errors.
+
+**Cause**: The `+` character gets consumed or reinterpreted during argument passing through the bash wrapper -> grun -> ld.so chain.
+
+**Workaround**: Use a temp file instead of `-e`:
 
 ```bash
-# Test direct execution:
+# Instead of:
+bun -e 'console.log(1+1)'
+
+# Use:
+echo 'console.log(1+1)' > /tmp/test.js && bun /tmp/test.js
+```
+
+## Wrong bun version or old binary
+
+**Symptom**: `bun --version` shows an unexpected version.
+
+**Fix**:
+
+```bash
+# Check which bun is being used
+which bun
+type bun
+
+# Check the actual binary
 grun ~/.bun/bin/buno --version
 
-# Test wrapper:
-~/.bun/bin/bun --version
+# If there are multiple bun installations, check PATH order
+echo $PATH | tr ':' '\n' | grep -i bun
 ```
 
-### Monitor Resource Usage
+## Debugging
+
+### Wrapper debug
+
+Check what the wrapper is doing by adding `set -x` temporarily:
 
 ```bash
-# Check memory during package install:
-bun install &
-top -p $!
+# Add to top of ~/.bun/bin/bun (after the shebang):
+set -x
+
+# Run your command, observe the trace output
+bun run dev
+
+# Remove set -x when done
 ```
 
-### Network Debugging
+### grun debug
 
 ```bash
-# Test registry connectivity:
-curl -I https://registry.npmjs.org/
+# Basic strace
+grun --debug 1 ~/.bun/bin/buno --version
 
-# Use different registry:
-bun install --registry=https://registry.npmjs.org/
+# Verbose strace
+grun --debug 3 ~/.bun/bin/buno --version
+
+# Check library loading
+grun --findlib ~/.bun/bin/buno
 ```
 
-## Environment Specific Issues
-
-### Termux-Pacman Conflicts
-
-If using termux-pacman, ensure no conflicts with regular Termux packages:
+### System information for bug reports
 
 ```bash
-# Check package manager:
-which pacman
-which pkg
-
-# Verify glibc installation:
-pacman -Qs glibc
-```
-
-### Android Version Compatibility
-
-Some Android versions have stricter restrictions:
-
-- Android 7+: Basic functionality
-- Android 10+: Enhanced security requires workarounds
-- Android 14+: Additional filesystem restrictions
-
-### Storage Issues
-
-Termux internal storage may have limitations:
-
-```bash
-# Check available space:
-df -h $HOME
-
-# Use external storage if needed:
-bun --cwd=/sdcard/project install
-```
-
-## Performance Optimization
-
-### Memory Usage
-
-```bash
-# Use --smol flag for lower memory:
-bun --smol script.js
-
-# Configure garbage collection:
-bun --expose-gc script.js
-```
-
-### Network Performance
-
-```bash
-# Use local cache:
-bun install --prefer-offline
-
-# Parallel downloads:
-bun install --concurrent=2
-```
-
-### Bunx Package Not Found
-
-**Symptom**: `bunx package` fails with "Could not find executable" error
-**Cause**: Package doesn't provide expected binary name
-**Solutions**:
-1. Check what binaries the package actually provides
-2. Use `--package` flag to specify binary name explicitly
-3. Check if package is compatible with ARM64/Android
-
-```bash
-# Check what binaries a package provides:
-bunx --package=your-package --help
-
-# Sometimes package name differs from binary name:
-bunx typescript --version  # Uses 'tsc' binary automatically
-```
-
-### Bunx Cache Issues
-
-**Symptom**: Old versions being used or cache corruption
-**Cause**: Stale cache or permission issues
-**Solutions**:
-1. Clear bunx cache manually
-2. Check cache directory permissions
-
-```bash
-# Clear bunx cache:
-rm -rf ~/.bun/tmp/bunx-*
-
-# Check cache permissions:
-ls -la ~/.bun/tmp/
-```
-
-## Getting Help
-
-1. Run the comprehensive test suite: `./test-bun-comprehensive.sh`
-2. Test bunx functionality: `./init test-bunx`
-3. Check the detailed output for specific failing commands
-4. Consult the main README.md for architecture details
-5. Open an issue with test results and system information
-
-### System Information to Include
-
-```bash
-termux-info
-bun --version
-grun --version 2>/dev/null || echo "grun not available"
+echo "=== System ==="
+uname -a
 cat /proc/version
+
+echo "=== Termux ==="
+termux-info 2>/dev/null || echo "termux-info not available"
+
+echo "=== Versions ==="
+bun --version
+node --version 2>/dev/null
+grun --version 2>/dev/null
+
+echo "=== Binary ==="
+file ~/.bun/bin/buno
+ls -la ~/.bun/bin/
+
+echo "=== Package Manager ==="
+pacman -Q glibc-runner glibc 2>/dev/null
 ```

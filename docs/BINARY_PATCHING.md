@@ -100,7 +100,7 @@ grun --configure ~/.bun/bin/buno  # Runs silently (already configured)
 grun --findlib ~/.bun/bin/buno    # Libraries found successfully
 
 # Test execution
-grun ~/.bun/bin/buno --version    # Works: Bun 1.2.20
+grun ~/.bun/bin/buno --version    # Works: Bun 1.3.9
 ```
 
 **Result**: The included `buno` binary is already patched and configured for Termux.
@@ -111,12 +111,12 @@ grun ~/.bun/bin/buno --version    # Works: Bun 1.2.20
 
 If you download a fresh Bun binary from GitHub, follow this process:
 
-#### 1. Download ARM64 musl Binary
+#### 1. Download ARM64 glibc Binary
 ```bash
-# Download latest ARM64 musl binary from GitHub
+# Download latest ARM64 glibc binary from GitHub
 # URL format: https://github.com/oven-sh/bun/releases/download/bun-v{version}/bun-linux-aarch64.zip
 
-wget https://github.com/oven-sh/bun/releases/download/bun-v1.2.20/bun-linux-aarch64.zip
+wget https://github.com/oven-sh/bun/releases/download/bun-v1.3.9/bun-linux-aarch64.zip
 unzip bun-linux-aarch64.zip
 ```
 
@@ -201,7 +201,7 @@ grun --configure ./binary
 ## Binary Compatibility Notes
 
 ### Working Binaries
-- **Bun v1.2.20 ARM64 musl**: ✅ Works with configuration
+- **Bun v1.3.9 ARM64 glibc**: ✅ Works with glibc-runner
 - **Node.js ARM64 glibc**: ✅ Usually works with configuration
 - **Go binaries (ARM64)**: ✅ Often work without configuration
 
@@ -211,7 +211,7 @@ grun --configure ./binary
 - **Binaries with kernel version requirements > Android**: ⚠️ May fail
 
 ### Alternatives for Failed Binaries
-1. **Look for musl versions**: Often more compatible than glibc
+1. **Use glibc variant**: `bun-linux-aarch64.zip` (not musl) works with grun
 2. **Compile from source**: Use Android NDK or cross-compilation
 3. **Find ARM64-specific builds**: Check project releases for Android/ARM64
 4. **Use JavaScript/TypeScript alternatives**: Run with Bun directly
@@ -227,8 +227,8 @@ https://github.com/oven-sh/bun/releases/latest/download/bun-linux-aarch64.zip
 https://github.com/oven-sh/bun/releases/download/bun-v{VERSION}/bun-linux-aarch64.zip
 
 # Examples:
+https://github.com/oven-sh/bun/releases/download/bun-v1.3.9/bun-linux-aarch64.zip
 https://github.com/oven-sh/bun/releases/download/bun-v1.2.20/bun-linux-aarch64.zip
-https://github.com/oven-sh/bun/releases/download/bun-v1.2.0/bun-linux-aarch64.zip
 ```
 
 ### Download and Patch Script
@@ -236,7 +236,7 @@ https://github.com/oven-sh/bun/releases/download/bun-v1.2.0/bun-linux-aarch64.zi
 #!/bin/bash
 # download-and-patch-bun.sh
 
-VERSION=${1:-"v1.2.20"}
+VERSION=${1:-"v1.3.9"}
 URL="https://github.com/oven-sh/bun/releases/download/bun-${VERSION}/bun-linux-aarch64.zip"
 
 echo "Downloading Bun ${VERSION}..."

@@ -1,124 +1,34 @@
 # Changelog
 
-All notable changes to Bun on Termux will be documented in this file.
+## 2025-02-15
 
-## [1.1.2] - 2025-08-18
-
-### New Features
-- **Official Binary Support**: Instructions for downloading official Bun releases
-- **Automated Download Script**: `scripts/download-official-bun.sh` for easy official binary installation
-- **Binary Compatibility Guide**: Complete guide covering different binary sources
-- **Version Compatibility Matrix**: Known working and problematic versions
-- **Advanced Testing**: Comprehensive compatibility testing procedures
-
-### Documentation Additions
-- **NEW**: `docs/BINARY-COMPATIBILITY.md` - Complete binary source comparison
-- **ENHANCED**: Installation guide with official binary options
-- **IMPROVED**: README with both included and official binary instructions
-- **ADDED**: Troubleshooting for official binary issues
-
-### Scripts and Tools
-- **NEW**: Automated official binary downloader with testing and backup
-- **SAFETY**: Automatic backup/restore functionality
-- **TESTING**: Built-in compatibility verification
-- **ERROR HANDLING**: Comprehensive error messages and recovery
-
-### User Options
-- **Choice**: Users can now choose between included (stable) or official (latest) binaries
-- **Flexibility**: Multiple installation methods for different preferences
-- **Safety**: Backup and restore mechanisms for safe binary updates
-- **Documentation**: Clear guidance on when to use each option
-
-## [1.1.1] - 2025-08-18
-
-### Documentation Fixes
-- **CRITICAL**: Fixed incorrect glibc-runner installation instructions
-- **Removed**: All references to non-existent install script URLs
-- **Corrected**: Prerequisites now correctly specify termux-pacman requirement
-- **Added**: Complete installation guide with proper pacman setup
-- **Updated**: README with accurate installation and usage instructions
-- **Removed**: Misleading references to `bun.orig` binary
-- **Added**: Clear binary source documentation (included `buno` binary)
-
-### Setup Script Improvements
-- **Fixed**: setup.sh now uses correct pacman commands
-- **Added**: Proper error handling for missing pacman/glibc-runner
-- **Removed**: Non-working curl script installation
-- **Improved**: Clear error messages with correct documentation links
-
-### Documentation Structure
-- **New**: docs/INSTALLATION.md with complete setup guide
-- **Updated**: All documentation references to use correct binaries and commands
-- **Improved**: Clear distinction between manual and automatic installation
-- **Added**: Troubleshooting section with actual working solutions
-
-## [1.1.0] - 2025-08-18
-
-### Added
-- **Global Install Support**: Automatic `--backend=copyfile` for `bun i -g` commands
-- **Comprehensive Test Suite**: Complete testing of all Bun commands and edge cases
-- **Architecture Documentation**: Detailed technical documentation of the implementation
-- **Enhanced Wrapper**: Improved wrapper logic for better command handling
-- **uwu Integration**: Working AI command generation with API key support
+### Upgraded
+- Bun binary from v1.2.20 to v1.3.9 (`bun-linux-aarch64` glibc variant)
+- SHA256 verified against official GitHub release
 
 ### Fixed
-- **Global Package Installation**: Fixed permission errors with global installs
-- **Directory Reading**: Improved handling of Android filesystem restrictions
-- **Environment Variables**: Documented grun limitations and provided workarounds
-- **Package.json Scripts**: Reliable execution through wrapper parsing
-- **Binary Compatibility**: Using stable `buno` binary instead of segfaulting alternatives
-
-### Technical Details
-- **Root Cause Analysis**: Identified that global installs don't read local `bunfig.toml`
-- **glibc-runner Integration**: Better understanding of environment variable isolation
-- **Wrapper Enhancement**: Added automatic backend detection and injection
-- **Testing Coverage**: 40+ test cases covering all major Bun functionality
-
-### Known Limitations
-- Environment variables don't pass through glibc-runner (design limitation)
-- Some build compilation features restricted on ARM64 Android
-- Hot reload and file watching may have limitations
-
-## [1.0.0] - 2025-08-18
+- **Environment variables**: Solved the root cause — glibc's `ld.so` zeroes C `environ` when invoked as a program loader. Added `env-preload.js` that reads `/proc/self/environ` and populates `process.env` via `--preload` flag
+- **`bun run` script handling**: Fixed `shift 2` (was `shift 1`, leaving script name as extra arg), added `eval` for shell expansion in package.json scripts, proper routing for nested `bun run` calls
+- **CouldntReadCurrentDirectory**: Wrapper now `cd`s to `~/.bun/tmp` before exec and converts all args to absolute paths
+- **`--config` syntax**: Changed from `--config <path>` (consumed next arg) to `--config=<path>`
+- **stderr noise**: Added `2> >(grep -v "Cannot read directory" >&2)` to filter non-fatal glibc path traversal warnings
 
 ### Added
-- **Initial Release**: Working Bun implementation on Termux Android
-- **Core Features**:
-  - Direct file execution (`bun script.js`, `bun script.ts`)
-  - Package management (`bun install`, `bun add`, `bun remove`)
-  - Build system (`bun build`)
-  - Package.json script execution (`bun run`)
-- **Wrapper System**: Custom wrapper handling Android-specific issues
-- **Configuration**: Global `bunfig.toml` with Termux optimizations
-- **Documentation**: Setup guide, troubleshooting, and usage examples
+- `env-preload.js` — preload script that bridges `/proc/self/environ` to `process.env`
+- `bunfig.toml` — global config with `backend=copyfile`, preload, and Termux-optimized defaults
+- Rewritten `bun-minimal` wrapper with safe CWD, absolute path resolution, command routing
+- Comprehensive README with technical explanation, benchmarks, and limitations
 
-### Technical Implementation
-- **glibc-runner Integration**: Using glibc v2.0-3 from upds branch
-- **Binary Management**: Working ARM64 musl binary (`buno`)
-- **Filesystem Workarounds**: Handling directory reading restrictions
-- **Installation System**: Automated setup script with dependency checking
+### Architecture
+- Confirmed binary is `bun-linux-aarch64` (glibc), not musl as previously assumed
+- Documented why patchelf approach fails (libc.so linker script, LD_PRELOAD bionic/glibc conflict)
+- Documented bunfig.toml preload chicken-and-egg problem (bun needs env vars to find config)
 
-### Repository Structure
-- Complete project organization with docs, tests, and binaries
-- MIT license and contribution guidelines
-- Comprehensive README with installation and usage instructions
+## 2025-08 (Initial)
 
----
-
-## Development Notes
-
-### Version Numbering
-- **Major**: Significant architecture changes or new core features
-- **Minor**: New functionality, improvements, or important fixes
-- **Patch**: Bug fixes, documentation updates, minor improvements
-
-### Testing
-Each release is validated with the comprehensive test suite covering:
-- All Bun commands and flags
-- Package management scenarios
-- Build and compilation features
-- Error handling and edge cases
-- Performance and compatibility checks
-
-### Contributing
-See CONTRIBUTING.md for development setup and contribution guidelines.
+### Added
+- Initial setup with glibc-runner integration
+- Basic wrapper script for `bun run` and package management
+- bunx wrapper for package execution
+- Test suite (`test-bun-comprehensive.sh`)
+- Documentation for architecture, installation, troubleshooting, binary patching

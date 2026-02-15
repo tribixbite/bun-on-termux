@@ -1,332 +1,267 @@
 # Bun on Termux
 
-Native Bun JavaScript runtime working on Termux Android using glibc-runner.
+Run [Bun](https://bun.sh) natively on Android via [Termux](https://termux.dev) using [glibc-runner](https://github.com/niclas-AE/glibc-runner).
 
-## Overview
+**Current version**: Bun v1.3.9 (linux-aarch64 glibc) running through grun on Android ARM64.
 
-This project provides a complete Bun runtime for Termux Android, enabling native JavaScript/TypeScript execution without container dependencies. It uses glibc-runner for compatibility with standard Bun binaries on Android's bionic libc system.
+## How it works
 
-## Features
+Bun is a glibc binary. Android uses bionic libc. The `glibc-runner` (`grun`) package provides a compatibility layer that invokes glibc's `ld-linux-aarch64.so.1` as a program loader to execute glibc binaries on bionic.
 
-- ✅ **Direct Execution**: `bun script.js`, `bun script.ts` work natively
-- ✅ **Package Management**: `bun install`, `bun add`, `bun remove` with automatic optimizations
-- ✅ **Global Packages**: `bun i -g package` with automatic copyfile backend
-- ✅ **Script Running**: `bun run dev` with wrapper-based parsing
-- ✅ **Package Execution**: `bunx package` with intelligent caching and binary detection
-- ✅ **Build System**: `bun build` and bundling operations
-- ✅ **TypeScript Support**: Built-in TypeScript compilation and execution
-- ⚠️ **Environment Variables**: Limited due to glibc-runner design constraints
-- ⚠️ **Compilation**: Some `bun build --compile` features may be restricted
+This creates two problems that this project solves:
 
-## Installation
+1. **Environment variables are lost.** When `ld.so` is invoked as a program (rather than as the ELF interpreter via `PT_INTERP`), it zeroes the C `environ` pointer. The kernel-level environment in `/proc/self/environ` remains intact, but `process.env` in Bun/JS is empty.
+
+2. **`std::env::current_dir()` fails.** Bun's internal `readDirInfo()` call fails when traversing `/data/data/` through glibc's dynamic linker, causing `CouldntReadCurrentDirectory` errors for `bun run`, config file reading, and other operations.
+
+### Solution architecture
+
+```
+bun (wrapper) -> grun -> ld.so -> buno (real binary)
+                           |
+                     env-preload.js (restores process.env from /proc/self/environ)
+```
+
+The wrapper script (`bun`) handles:
+- **CWD workaround**: Changes to a safe directory (`~/.bun/tmp`) before exec, resolves all file args to absolute paths
+- **Env preload**: Passes `--preload env-preload.js` which reads `/proc/self/environ` and populates `process.env`
+- **`bun run` parsing**: Intercepts `bun run <script>` to parse `package.json` scripts and route execution correctly
+- **Global install backend**: Forces `--backend=copyfile` for global installs (Termux can't hardlink across filesystems)
+- **Stderr filtering**: Suppresses non-fatal "Cannot read directory" noise from glibc path traversal
+
+## Quick start
 
 ### Prerequisites
 
-**Required**: termux-pacman (replaces default pkg manager)
+- **Termux** from F-Droid or GitHub (not Play Store)
+- **termux-pacman** package manager (not apt/pkg)
+- **glibc-runner**: `pacman -S glibc-runner`
+- **ARM64 (aarch64)** device
 
-#### Install termux-pacman
-```bash
-# For fresh Termux installations:
-pkg install wget
-wget https://github.com/termux-pacman/termux-packages/releases/latest/download/bootstrap-aarch64.zip
-unzip bootstrap-aarch64.zip
-./bootstrap-aarch64.sh
-
-# Verify installation
-pacman --version
-```
-
-#### Install dependencies
-```bash
-# Update package database
-pacman -Sy
-
-# Install required packages
-pacman -S git glibc-runner
-
-# Verify glibc-runner
-grun --version
-```
-
-### Install Bun on Termux
+### Install
 
 ```bash
-# Clone repository
 git clone https://github.com/tribixbite/bun-on-termux.git
 cd bun-on-termux
+chmod +x setup.sh && ./setup.sh
+```
 
-# Run setup
-chmod +x setup.sh
-./setup.sh
+Or manually:
 
-# Verify installation
+```bash
+mkdir -p ~/.bun/bin ~/.bun/tmp
+
+# Copy the wrapper, preload script, and config
+cp wrappers/bun-minimal ~/.bun/bin/bun
+cp wrappers/env-preload.js ~/.bun/bin/
+cp config/bunfig.toml ~/.bun/bin/
+
+chmod +x ~/.bun/bin/bun
+
+# Download and install the bun binary
+BUN_VERSION="1.3.9"
+curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-aarch64.zip" \
+  -o ~/.bun/tmp/bun.zip
+unzip -o ~/.bun/tmp/bun.zip -d ~/.bun/tmp/
+cp ~/.bun/tmp/bun-linux-aarch64/bun ~/.bun/bin/buno
+chmod +x ~/.bun/bin/buno
+
+# Add to PATH
+echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# Verify
 bun --version
 ```
 
-### Test Installation
+## What works
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| `bun --version` | works | Passthrough to binary |
+| `bun script.js` | works | Direct file execution with env preload |
+| `bun script.ts` | works | Native TypeScript, no transpile step |
+| `bun run <script-name>` | works | Wrapper parses package.json |
+| `bun run <file>` | works | Detects file path, routes to direct exec |
+| `bun install` | works | Uses `copyfile` backend via bunfig.toml |
+| `bun add <pkg>` | works | Local and global (auto `--backend=copyfile`) |
+| `bun test` | works | Test runner with env preload |
+| `bun build` | works | Bundler output to `./dist` |
+| `bun -e '<code>'` | works | Inline eval with env preload |
+| `bun repl` | works | Interactive REPL |
+| `bun x <pkg>` (bunx) | partial | CouldntReadCurrentDirectory in some cases |
+| `process.env.*` | works | Restored from `/proc/self/environ` via preload |
+| Nested `bun run` scripts | works | Wrapper detects `"bun run ..."` in scripts |
+| Shell scripts in package.json | works | Executed via `eval` in native Termux shell |
+
+## Known limitations
+
+- **`bunx` / `bun x`**: Can fail with `CouldntReadCurrentDirectory` when the executed package tries to read the working directory. Use `npx` as fallback.
+- **`bun build --compile`**: Single-file compilation fails due to Android filesystem restrictions on the compiled output binary.
+- **Hot reload / `--watch`**: Filesystem watching may not trigger reliably on all Android kernels.
+- **grun startup overhead**: Each bun invocation pays ~30-50ms for the glibc dynamic linker setup. Still faster than Node.js overall (see benchmarks).
+- **`+` operator in `-e` args**: The `+` character can get consumed in argument passing through the grun/ld.so chain. Use a file instead.
+- **Stale install cache**: `bun add` may show EACCES warnings from prior cache entries with different permissions. The install itself still succeeds.
+- **bunfig.toml preload chicken-and-egg**: The `[run] preload` setting in bunfig.toml cannot work standalone because bun needs env vars (HOME, BUN_INSTALL) to locate the config file in the first place. The `--preload` CLI flag in the wrapper is the actual fix.
+
+## Benchmarks vs Node.js
+
+Tested on Android ARM64 (Snapdragon), Termux, Bun v1.3.9 via grun, Node.js v24.9.0 native.
+
+### Startup time (console.log + exit)
+
+| Runtime | Avg (5 runs) | Notes |
+|---------|-------------|-------|
+| **bun** | **~85ms** | Includes grun + ld.so overhead |
+| node | ~137ms | Native Termux binary |
+
+Bun is **~38% faster** despite the glibc-runner indirection.
+
+### Script execution (1M iteration loop)
+
+| Runtime | Avg wall time (3 runs) | Computation only |
+|---------|----------------------|------------------|
+| **bun** | **~94ms** | ~6.6ms |
+| node | ~137ms | ~6.1ms |
+
+Bun is **~31% faster** in total wall time. Pure computation is roughly equal (V8 vs JSC), but bun's faster startup and lighter runtime give it the edge.
+
+### TypeScript execution (native .ts file, 1M loop)
+
+| Runtime | Avg wall time (3 runs) | Notes |
+|---------|----------------------|-------|
+| **bun** | **~93ms** | Native TS support, zero config |
+| node | ~235ms | `--experimental-strip-types` |
+
+Bun is **~60% faster** for TypeScript — no transpilation step needed.
+
+### Package install (lodash, cold cache)
+
+| Tool | Time | Notes |
+|------|------|-------|
+| **bun add** | **~645ms** | copyfile backend |
+| npm install | ~1324ms | Default |
+
+Bun is **~2x faster** for package installation.
+
+## Technical deep dive
+
+### The environment variable problem
+
+When glibc-runner executes a binary, it runs:
+
+```
+exec /path/to/ld-linux-aarch64.so.1 /path/to/buno [args...]
+```
+
+This invokes `ld.so` as a standalone program rather than as the ELF interpreter (`PT_INTERP`). In this mode, glibc's runtime startup code zeroes the C `environ` pointer because it treats the actual binary as a "new" process payload. The result: `process.env` in JavaScript has 0 keys.
+
+However, the Linux kernel maintains the original environment in `/proc/self/environ` as null-separated `KEY=VALUE\0` entries. The `env-preload.js` script reads this file and populates `process.env` before any user code runs:
+
+```javascript
+// env-preload.js (simplified)
+if (Object.keys(process.env).length === 0) {
+    const data = fs.readFileSync("/proc/self/environ", "utf8");
+    for (const entry of data.split("\0")) {
+        const idx = entry.indexOf("=");
+        if (idx > 0) process.env[entry.substring(0, idx)] = entry.substring(idx + 1);
+    }
+}
+```
+
+### The CWD problem
+
+Bun internally calls `std::env::current_dir()` (Rust) which resolves to `getcwd()` in glibc. When the process was launched via `ld.so`, the working directory traversal through `/data/data/com.termux/files/...` fails because glibc's directory reading code can't traverse Android's app-private filesystem hierarchy.
+
+The wrapper solves this by:
+1. Saving the original CWD at startup
+2. Converting all relative file arguments to absolute paths
+3. Changing to `~/.bun/tmp` (a safe, readable directory) before exec
+4. Filtering the remaining non-fatal "Cannot read directory" stderr noise
+
+### Wrapper execution flow
+
+```
+bun --version           -> passthrough: grun buno --version
+bun script.ts           -> detect file -> absolute path -> _bun_js (grun + preload)
+bun run dev             -> parse package.json -> route based on script content:
+                             "bun run file.ts"  -> _bun_js with absolute path
+                             "bun build ..."    -> _bun_js with preload
+                             "echo hello"       -> eval in native Termux shell
+bun install             -> _bun_cmd (grun, no preload needed)
+bun add -g pkg          -> _bun_cmd + --backend=copyfile
+bun test                -> _bun_js (needs env preload)
+bun -e 'code'           -> _bun_js (needs env preload)
+```
+
+## File structure
+
+```
+~/.bun/
+  bin/
+    bun           <- wrapper script (this project)
+    buno          <- real bun binary (official release)
+    env-preload.js <- /proc/self/environ -> process.env bridge
+    bunfig.toml   <- bun config (copyfile backend, preload, etc.)
+  tmp/            <- safe CWD for grun execution
+  install/
+    cache/        <- package download cache
+```
+
+## Repository layout
+
+```
+bun-on-termux/
+  wrappers/
+    bun           <- main wrapper (copy of bun-minimal)
+    bun-minimal   <- enhanced wrapper with env preload + safe CWD
+    env-preload.js <- preload script for env var restoration
+  config/
+    bunfig.toml   <- global bun configuration for Termux
+  docs/
+    ARCHITECTURE.md
+    INSTALLATION.md
+    BINARY-COMPATIBILITY.md
+    BINARY_PATCHING.md
+    TROUBLESHOOTING.md
+    TERMUX_CONFIG.md
+    PACKAGE_MANAGER_MIGRATION.md
+  setup.sh        <- automated installer
+  test-bun-comprehensive.sh <- full test suite
+```
+
+## Upgrading bun
+
+To upgrade to a new bun release:
 
 ```bash
-# Run comprehensive test suite
-./test-bun-comprehensive.sh
+# Backup current binary
+cp ~/.bun/bin/buno ~/.bun/bin/buno-$(bun --version).bak
 
-# Try example project
-cd examples/basic-project
-bun install
-bun run dev
-```
+# Download new version
+BUN_VERSION="1.3.9"  # change to desired version
+curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-aarch64.zip" \
+  -o ~/.bun/tmp/bun.zip
+unzip -o ~/.bun/tmp/bun.zip -d ~/.bun/tmp/
+cp ~/.bun/tmp/bun-linux-aarch64/bun ~/.bun/bin/buno
+chmod +x ~/.bun/bin/buno
 
-## Quick Start
-
-### Basic Usage
-```bash
-# Direct file execution
-echo 'console.log("Hello from Bun!");' > hello.js
-bun hello.js
-
-# TypeScript support
-echo 'const message: string = "TypeScript works!"; console.log(message);' > hello.ts
-bun hello.ts
-
-# Package management
-bun init
-bun add lodash
-bun install
-```
-
-### Project Scripts
-```bash
-# package.json scripts work automatically
-bun run dev
-bun run build
-bun run test
-
-# Global package installation
-bun i -g prettier
-bun i -g typescript
-
-# Package execution (bunx)
-bunx ccusage           # Run without installing globally
-bunx typescript --version   # Uses existing tsc binary
-bunx cowsay "hello world"   # Installs and runs from cache
-bunx create-react-app my-app  # Template creation
-```
-
-## Architecture
-
-### Core Components
-
-1. **glibc-runner (grun)**: Compatibility layer for glibc binaries on Android
-2. **Bun Binary (buno)**: ARM64 musl-based Bun runtime (92MB)
-3. **Wrapper Script**: Handles Android-specific filesystem and directory issues
-4. **Configuration**: Global bunfig.toml with Termux-optimized settings
-
-### Execution Flow
-```
-Direct: bun script.js → wrapper → grun → buno → execution
-Scripts: bun run dev → wrapper → parse package.json → direct execution
-Global: bun i -g pkg → wrapper → grun → buno --backend=copyfile
-Bunx: bunx pkg → wrapper → check PATH → check cache → install if needed → execute
-```
-
-## File Structure
-
-- `wrappers/bun` - Main wrapper with Android compatibility fixes
-- `wrappers/bunx` - Bunx wrapper with smart caching and binary detection
-- `wrappers/bun-minimal` - Minimal wrapper for testing
-- `binaries/buno` - Working ARM64 Bun binary (92MB)
-- `config/bunfig.toml` - Local project configuration template
-- `config/bunfig-global.toml` - Global configuration template
-- `test-bun-comprehensive.sh` - Complete test suite (40+ tests)
-- `init` - Setup script with server and testing capabilities
-- `examples/` - Working example projects
-- `docs/` - Complete documentation and troubleshooting
-
-## Binary Options
-
-### Included Binary (Default)
-The repository includes a pre-tested ARM64 binary that's verified to work with glibc-runner and already configured for Termux compatibility.
-
-### Official Bun Binary (Alternative)
-If you prefer to use the latest official Bun binary from GitHub:
-
-#### GitHub Release URLs
-```bash
-# Latest release (automatically gets newest version)
-https://github.com/oven-sh/bun/releases/latest/download/bun-linux-aarch64.zip
-
-# Specific version URLs (replace {VERSION} with actual version)
-https://github.com/oven-sh/bun/releases/download/bun-v{VERSION}/bun-linux-aarch64.zip
-
-# Examples for specific versions:
-https://github.com/oven-sh/bun/releases/download/bun-v1.2.20/bun-linux-aarch64.zip
-https://github.com/oven-sh/bun/releases/download/bun-v1.2.0/bun-linux-aarch64.zip
-```
-
-#### Automated Script (Recommended)
-```bash
-# Use the provided download script
-chmod +x scripts/download-official-bun.sh
-./scripts/download-official-bun.sh
-```
-
-#### Manual Download and Patching
-```bash
-# Download latest official Bun for ARM64
-wget https://github.com/oven-sh/bun/releases/latest/download/bun-linux-aarch64.zip
-unzip bun-linux-aarch64.zip
-cd bun-linux-aarch64
-
-# Configure binary for Termux compatibility
-grun --configure ./bun
-
-# Verify library compatibility  
-grun --findlib ./bun
-
-# Test execution
-grun ./bun --version
-
-# If successful, install as working binary
-cp ./bun ~/.bun/bin/buno && chmod +x ~/.bun/bin/buno
-bun --version  # Test wrapper functionality
-```
-
-#### Binary Patching Process
-Official Bun binaries require configuration for Termux compatibility:
-
-1. **glibc-runner Configuration**: Patches ELF headers for Android compatibility
-2. **Library Resolution**: Ensures all required glibc libraries are found
-3. **Dynamic Linker Setup**: Configures proper linking environment
-
-**Important**: The included `buno` binary is already patched and configured. For detailed binary patching instructions, troubleshooting, and manual configuration processes, see [`docs/BINARY_PATCHING.md`](docs/BINARY_PATCHING.md).
-
-**Note**: Official binaries may have different compatibility characteristics. Always test thoroughly before replacing a working binary. The download script includes automatic testing and backup/restore functionality.
-
-## Known Limitations
-
-### Environment Variables
-glibc-runner doesn't pass environment variables to child processes. Workarounds:
-- Use configuration files instead of environment variables
-- Create wrapper scripts that set variables explicitly
-- Hardcode values in application code
-
-### Directory Reading
-Some `bun run` operations require wrapper intervention due to Android filesystem restrictions. The wrapper handles this transparently.
-
-### Build Compilation
-`bun build --compile` may have limitations on ARM64 Android. Use regular bundling as an alternative.
-
-## Troubleshooting
-
-### Common Issues
-
-**"CouldntReadCurrentDirectory" Error**
-- **Cause**: Android filesystem restrictions
-- **Solution**: Use the provided wrapper (automatic)
-
-**Global Install Permission Errors**
-- **Cause**: Default hardlink backend doesn't work on Android
-- **Solution**: Wrapper automatically adds `--backend=copyfile`
-
-**Environment Variables Missing**
-- **Cause**: glibc-runner limitation
-- **Solution**: Use config files or wrapper scripts
-
-**Segmentation Faults**
-- **Cause**: Binary compatibility issues
-- **Solution**: Ensure using included `buno` binary
-
-### Getting Help
-
-1. Run the test suite: `./test-bun-comprehensive.sh`
-2. Check logs and error messages
-3. Review `docs/TROUBLESHOOTING.md`
-4. Check system requirements and installation steps
-
-## Bunx (Package Execution)
-
-The `bunx` command allows you to execute npm packages directly without permanently installing them. Our implementation follows the same behavior as official Bun with Termux-specific optimizations.
-
-### How Bunx Works
-
-1. **Check existing binaries**: First looks for the command in your PATH and local node_modules
-2. **Smart caching**: Uses `~/.bun/tmp/bunx-<uid>-<package>@<version>/` for temporary installations  
-3. **Staleness detection**: Cached packages are valid for 24 hours, then refreshed automatically
-4. **Binary name mapping**: Handles special cases like `typescript` → `tsc`
-5. **Environment variable support**: Full environment variable passing to executed commands
-
-### Bunx Examples
-
-```bash
-# Execute a package (installs to cache if needed)
-bunx cowsay "Hello from Termux!"
-
-# Use existing system/project binaries when available
-bunx typescript --version      # Uses existing tsc if available
-
-# Template generation
-bunx create-react-app my-app
-
-# Development tools
-bunx prettier src/**.js
-bunx eslint src/
-
-# Analytics and utilities  
-bunx ccusage                   # Claude Code usage analytics
-```
-
-### Cache Management
-
-Bunx automatically manages a cache directory to avoid repeated downloads:
-
-```bash
-# Cache location
-~/.bun/tmp/bunx-<uid>-<package>@<version>/
-
-# Cache is automatically cleaned after 24 hours
-# No manual cleanup required
-```
-
-## Development
-
-### Testing
-```bash
-# Full test suite
-./test-bun-comprehensive.sh
-
-# Quick functionality test
+# Verify
 bun --version
-bun -e 'console.log("Works!")'
-
-# Test bunx functionality
-bunx --help
-bunx cowsay "bunx test"
 ```
 
-### Contributing
-1. Fork the repository
-2. Test changes with the comprehensive test suite
-3. Update documentation for any changes
-4. Submit pull request with detailed description
+Use `bun-linux-aarch64.zip` (glibc variant), not the musl variant. The glibc variant is what works with glibc-runner.
 
-## Technical Details
+## Docs
 
-- **Binary Source**: ARM64 musl build compatible with glibc-runner
-- **glibc-runner Version**: v2.0+ with upds branch support
-- **Architecture**: ARM64 (aarch64) Android devices
-- **Wrapper Logic**: Handles directory reading, global installs, script parsing
-- **Performance**: Near-native execution speed with ~10MB memory overhead
-
-## Support
-
-- **Documentation**: Complete guides in `docs/`
-- **Examples**: Working projects in `examples/`
-- **Issues**: Report bugs via GitHub issues
-- **Architecture**: See `docs/ARCHITECTURE.md` for technical details
+- [Architecture](docs/ARCHITECTURE.md) — how the wrapper, preload, and grun interact
+- [Installation](docs/INSTALLATION.md) — step-by-step install guide
+- [Binary Compatibility](docs/BINARY-COMPATIBILITY.md) — binary variants, SHA verification
+- [Binary Patching](docs/BINARY_PATCHING.md) — grun --configure workflow
+- [Troubleshooting](docs/TROUBLESHOOTING.md) — common errors and fixes
+- [Termux Config](docs/TERMUX_CONFIG.md) — pacman, glibc-runner, env vars
+- [Package Manager Migration](docs/PACKAGE_MANAGER_MIGRATION.md) — apt to pacman
 
 ## License
 
-MIT - See LICENSE file for details.
-
----
-
-**Status**: Production ready with documented limitations. Actively maintained and tested on ARM64 Android devices.
+MIT

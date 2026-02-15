@@ -107,7 +107,7 @@ bun --version
 ## Binary Sources
 
 ### Option 1: Included Binary (Recommended)
-The repository includes a working ARM64 binary (`buno`) that's compatible with glibc-runner.
+The repository includes a working ARM64 glibc binary (`buno`) that's compatible with glibc-runner.
 
 ### Option 2: Official Bun Releases
 If you prefer to obtain the binary from official sources:
@@ -120,7 +120,7 @@ cd ~/.bun/downloads
 
 # Download latest Bun for Linux ARM64
 # Check https://github.com/oven-sh/bun/releases for latest version
-BUN_VERSION="1.2.20"  # Update this to latest version
+BUN_VERSION="1.3.9"  # Update this to latest version
 wget "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-aarch64.zip"
 
 # Extract binary
@@ -246,7 +246,7 @@ If you only need the wrapper and binary:
 mkdir -p ~/.bun/bin
 
 # Download and install binary (if you have a compatible one)
-# Place your ARM64 musl bun binary as ~/.bun/bin/buno
+# Place your ARM64 glibc bun binary as ~/.bun/bin/buno
 
 # Download wrapper
 wget https://raw.githubusercontent.com/tribixbite/bun-on-termux/main/wrappers/bun

@@ -1,185 +1,127 @@
-# Binary Management Guide
+# Binary Compatibility Guide
 
-This guide covers how to obtain, install, and manage Bun binaries for Termux.
+## Current binary
 
-## Why `buno` (Bun Original)
+| Property | Value |
+|----------|-------|
+| **Version** | Bun v1.3.9 |
+| **Variant** | `bun-linux-aarch64` (glibc) |
+| **Architecture** | ARM64 (aarch64) |
+| **Size** | ~100MB |
+| **Location** | `~/.bun/bin/buno` |
+| **SHA256** | `a2c2862bcc1fd1c0b3a8dcdc8c7efb5e2acd871eb20ed2f17617884ede81c844` |
+| **Source** | [oven-sh/bun v1.3.9](https://github.com/oven-sh/bun/releases/tag/bun-v1.3.9) |
 
-The binary is named `buno` (Bun Original) so the wrapper script can use the standard `bun` command name. This allows:
-- Natural `bun` command usage
-- Wrapper to handle Android/Termux-specific issues
-- Direct binary access via `grun ~/.bun/bin/buno` when needed
+## Which variant to use
 
-## Current Binary Details
+Bun publishes multiple Linux ARM64 variants:
 
-**Included Binary:**
-- **Version**: Bun v1.2.20 ARM64 musl
-- **Source**: Official Bun releases
-- **Testing**: Verified working with glibc-runner v2.0-3
-- **Location**: `~/.bun/bin/buno`
+| File | Variant | Works with grun? |
+|------|---------|-----------------|
+| `bun-linux-aarch64.zip` | **glibc** | **Yes** — use this one |
+| `bun-linux-aarch64-musl.zip` | musl | Not tested; grun provides glibc, not musl |
+| `bun-linux-aarch64-baseline.zip` | glibc (no advanced CPU features) | Should work; try if main variant segfaults |
 
-**Why musl over glibc:**
-- Better compatibility with Android's bionic libc through glibc-runner
-- Fewer dynamic library dependencies
-- More predictable behavior in containerized/emulated environments
+Use the **glibc** variant (`bun-linux-aarch64.zip`). Despite early assumptions that musl might be more compatible, the glibc variant is what glibc-runner is designed to run. The dynamic linker and shared libraries provided by grun's glibc environment match the glibc variant's expectations.
 
-## Getting Official Binaries
+## Naming convention
 
-### Download Latest Official Binary
+The binary is stored as `buno` ("bun original") so the wrapper script can claim the `bun` command name:
 
-```bash
-# Use the included download script
-cd /path/to/bun-on-termux
-./scripts/download-official-bun.sh
-
-# Manual download (what the script does)
-LATEST_URL=$(curl -s https://api.github.com/repos/oven-sh/bun/releases/latest | grep "browser_download_url.*bun-linux-aarch64.zip" | cut -d '"' -f 4)
-curl -L "$LATEST_URL" -o /tmp/bun-latest.zip
-cd /tmp && unzip bun-latest.zip
-chmod +x bun-linux-aarch64/bun
-cp bun-linux-aarch64/bun ~/.bun/bin/buno
+```
+~/.bun/bin/bun   <- bash wrapper script (this project)
+~/.bun/bin/buno  <- real bun binary from official release
 ```
 
-### Download Specific Version
+## Verifying a binary
+
+### SHA256 verification
 
 ```bash
-# Replace v1.2.20 with desired version
-VERSION="v1.2.20"
-curl -L "https://github.com/oven-sh/bun/releases/download/$VERSION/bun-linux-aarch64.zip" -o /tmp/bun-$VERSION.zip
-cd /tmp && unzip bun-$VERSION.zip
-chmod +x bun-linux-aarch64/bun
-cp bun-linux-aarch64/bun ~/.bun/bin/buno
+# Download the official binary
+BUN_VERSION="1.3.9"
+curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-aarch64.zip" \
+  -o ~/.bun/tmp/bun-official.zip
+
+# Extract
+unzip -o ~/.bun/tmp/bun-official.zip -d ~/.bun/tmp/
+
+# Compare hashes
+sha256sum ~/.bun/bin/buno
+sha256sum ~/.bun/tmp/bun-linux-aarch64/bun
+# Both should match
 ```
 
-## Setting Up glibc-runner
+### ELF verification
 
-The binary requires glibc-runner to work on Termux:
-
-```bash
-# Install termux-pacman if not already installed
-wget https://github.com/termux-pacman/termux-packages/releases/latest/download/bootstrap-aarch64.zip
-unzip bootstrap-aarch64.zip && cd bootstrap
-chmod +x bootstrap-aarch64.sh && ./bootstrap-aarch64.sh
-
-# Install glibc-runner
-pacman -S glibc-runner
-
-# Verify installation
-grun --version
-```
-
-## Wrapper Configuration
-
-The wrapper script handles Android-specific issues automatically:
-
-**Location**: `~/.bun/bin/bun` (shell script)
-**Function**: 
-- Calls `grun ~/.bun/bin/buno` with proper arguments
-- Auto-adds `--backend=copyfile` for global installs
-- Handles directory reading failures for `bun run`
-
-**No additional configuration needed** - the wrapper should work automatically.
-
-## Binary Testing Commands
-
-After installing a new binary, verify it works:
-
-### Basic Functionality
-```bash
-# Test direct binary
-grun ~/.bun/bin/buno --version
-grun ~/.bun/bin/buno --revision
-
-# Test through wrapper  
-bun --version
-bun -e 'console.log("Hello from Bun")'
-```
-
-### Package Management
-```bash
-# Test local install
-mkdir /tmp/test-bun && cd /tmp/test-bun
-echo '{}' > package.json
-bun add lodash
-
-# Test global install (uses copyfile backend automatically)
-bun i -g cowsay
-
-# Test script execution
-echo '{"scripts":{"test":"echo test works"}}' > package.json
-bun run test
-```
-
-### TypeScript & Build
-```bash
-# Test TypeScript
-echo 'const msg: string = "TypeScript works"; console.log(msg);' > test.ts
-bun test.ts
-
-# Test build
-echo 'export default "built successfully";' > entry.js  
-bun build entry.js --outdir=dist
-```
-
-## Common Issues & Solutions
-
-### Binary Won't Execute
-**Check architecture:**
 ```bash
 file ~/.bun/bin/buno
-# Should show: ARM 64-bit
+# Expected: ELF 64-bit LSB executable, ARM aarch64, version 1 (SYSV),
+#           dynamically linked, interpreter /lib/ld-linux-aarch64.so.1,
+#           for GNU/Linux 3.7.0, ...
 ```
 
-**Verify grun setup:**
+Key things to check:
+- `ARM aarch64` — correct architecture
+- `dynamically linked` — needs glibc libraries (provided by grun)
+- `interpreter /lib/ld-linux-aarch64.so.1` — glibc dynamic linker (grun redirects this)
+
+### grun compatibility check
+
 ```bash
-grun --version
-# Should show glibc-runner version
+# Library resolution
+grun --findlib ~/.bun/bin/buno
+# Should output: "searching libraries was successful"
+
+# Basic execution
+grun ~/.bun/bin/buno --version
+# Should output: 1.3.9
+
+# Full wrapper execution
+bun --version
+# Should output: 1.3.9
 ```
 
-### Permission Errors During Install
-**For global installs** (wrapper auto-handles):
-```bash
-# Wrapper automatically adds --backend=copyfile for -g flag
-bun i -g package-name
-```
-
-**For local installs with issues:**
-```bash
-bun install --backend=copyfile
-```
-
-### Directory Reading Errors
-**The wrapper handles this automatically**, but if needed:
-```bash
-# Instead of: bun run script
-# Use: bun path/to/script.js directly
-```
-
-## Manual Binary Replacement
-
-To replace the binary manually:
+## Upgrading
 
 ```bash
-# Backup current binary
-cp ~/.bun/bin/buno ~/.bun/bin/buno.backup.$(date +%s)
+# 1. Backup current binary
+cp ~/.bun/bin/buno ~/.bun/bin/buno-$(bun --version).bak
 
-# Replace with new binary (make sure it's ARM64)
-cp /path/to/new/bun ~/.bun/bin/buno
+# 2. Download new version
+BUN_VERSION="1.3.9"  # change to target version
+curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-aarch64.zip" \
+  -o ~/.bun/tmp/bun.zip
+
+# 3. Extract and install
+unzip -o ~/.bun/tmp/bun.zip -d ~/.bun/tmp/
+cp ~/.bun/tmp/bun-linux-aarch64/bun ~/.bun/bin/buno
 chmod +x ~/.bun/bin/buno
 
-# Test new binary
+# 4. Verify
 bun --version
 
-# If it fails, restore backup
-cp ~/.bun/bin/buno.backup.* ~/.bun/bin/buno
+# 5. Run tests
+bun -e 'console.log("env vars:", Object.keys(process.env).length)'
+bun -e 'console.log("HOME:", process.env.HOME)'
 ```
 
-## Verification Script
-
-Run the comprehensive test suite to verify any binary:
+If the new version crashes or behaves incorrectly:
 
 ```bash
-cd /path/to/bun-on-termux
-./test-bun-comprehensive.sh
+# Restore backup
+cp ~/.bun/bin/buno-*.bak ~/.bun/bin/buno
 ```
 
-This tests 60+ scenarios and provides a detailed compatibility report.
+## Version history
+
+| Version | Variant | SHA256 | Status |
+|---------|---------|--------|--------|
+| v1.3.9 | linux-aarch64 (glibc) | `a2c2862bcc1fd1c0b3a8dcdc8c7efb5e2acd871eb20ed2f17617884ede81c844` | **Current** |
+| v1.2.20 | linux-aarch64 (glibc) | `7b184f1a36bf2fe6424d074af11c49391ba942abd1de4762adf7d96143b43839` | Previous, verified |
+
+## Known binary issues
+
+- **glibc version sensitivity**: The binary links against specific glibc symbols. If glibc-runner's glibc is too old, some symbols may be missing. Keep glibc-runner updated: `pacman -Syu glibc-runner glibc`.
+- **CPU feature requirements**: The main `bun-linux-aarch64` variant may use advanced ARM CPU features. If it segfaults on older SoCs, try the `-baseline` variant.
+- **Binary size**: ~100MB is large for mobile storage. Consider cleanup of old backups: `rm ~/.bun/bin/buno-*.bak`.

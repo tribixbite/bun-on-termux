@@ -17,8 +17,7 @@ production = false
 # Peer dependencies handling
 peer = false
 # Development dependencies in development mode
-dev = fals
- # true
+dev = true
 
 [install.cache]
 # the directory to use for the cache
