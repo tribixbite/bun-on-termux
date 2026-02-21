@@ -69,7 +69,31 @@ grep '"dev"' package.json
 bun src/index.ts
 ```
 
-## `bun add` shows EACCES permission errors
+## `bun install` EACCES — installs 0 packages
+
+**Symptom**: `EACCES: Permission denied while installing <package>` on every package, and `node_modules/` stays empty (0 packages installed). Directories may be created but files inside are missing.
+
+**Cause**: The wrapper script `cd`s to `~/.bun/tmp` (safe CWD) before running buno. This means `bun install` looks for `package.json` in the wrong directory and writes `node_modules/` to the wrong location. Additionally, if `~/.bun/install/cache/` was deleted or corrupted (e.g., after a Termux crash), bun silently fails to extract packages.
+
+**Fix**: Pass `--cwd` and `--backend=copyfile` explicitly:
+
+```bash
+# The reliable bun install invocation for Termux:
+bun install --cwd /absolute/path/to/project --backend=copyfile
+
+# Example:
+bun install --cwd $HOME/git/myproject --backend=copyfile
+```
+
+If the cache was deleted, recreate it first:
+
+```bash
+mkdir -p ~/.bun/install/cache
+```
+
+**Note**: Without `--cwd`, the wrapper's safe-CWD redirect causes bun to install to `~/.bun/tmp/node_modules/` instead of your project. Without `--backend=copyfile`, bun may create empty directories without actual file contents.
+
+## `bun add` shows EACCES permission warnings
 
 **Symptom**: `EACCES: Permission denied while installing <package>` but the install still succeeds.
 
@@ -80,6 +104,7 @@ bun src/index.ts
 ```bash
 # Clear the install cache
 rm -rf ~/.bun/install/cache
+mkdir -p ~/.bun/install/cache
 
 # Or fix permissions
 chmod -R u+rw ~/.bun/install/cache/

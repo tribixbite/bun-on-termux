@@ -101,6 +101,7 @@ bun --version
 - **Hot reload / `--watch`**: Filesystem watching may not trigger reliably on all Android kernels.
 - **grun startup overhead**: Each bun invocation pays ~30-50ms for the glibc dynamic linker setup. Still faster than Node.js overall (see benchmarks).
 - **`+` operator in `-e` args**: The `+` character can get consumed in argument passing through the grun/ld.so chain. Use a file instead.
+- **`bun install` safe-CWD mismatch**: The wrapper's `cd ~/.bun/tmp` causes `bun install` to look for `package.json` in the wrong directory. Fix: always pass `--cwd /absolute/path/to/project --backend=copyfile`. Without this, `node_modules/` may be empty or installed to the wrong location.
 - **Stale install cache**: `bun add` may show EACCES warnings from prior cache entries with different permissions. The install itself still succeeds.
 - **bunfig.toml preload chicken-and-egg**: The `[run] preload` setting in bunfig.toml cannot work standalone because bun needs env vars (HOME, BUN_INSTALL) to locate the config file in the first place. The `--preload` CLI flag in the wrapper is the actual fix.
 
