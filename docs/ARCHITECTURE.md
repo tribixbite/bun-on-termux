@@ -41,7 +41,7 @@ User's JS/TS code       (full process.env available)
 
 ### 1. Wrapper script (`~/.bun/bin/bun`)
 
-**Source**: `wrappers/bun-minimal` (137 lines)
+**Source**: `wrappers/bun-minimal` (~145 lines)
 
 The wrapper is the entry point for all `bun` commands. It handles:
 
@@ -56,7 +56,7 @@ The wrapper is the entry point for all `bun` commands. It handles:
 - `bun <file>`: Detects file argument, routes to `_bun_js`
 - `test`, `eval`, `repl`, `build`, `-e`: Routes to `_bun_js` (needs env preload)
 - `bun x` / bunx: Routes to `_bun_cmd` (no preload, uses grun only)
-- `install`, `add`, `remove`, `update`: Routes to `_bun_cmd`, auto-adds `--backend=copyfile` for global installs
+- `install`, `add`, `remove`, `update`: Routes to `_bun_cmd` with auto-injected `--cwd $_ORIG_CWD` (restores real CWD) and `--backend=copyfile` (hardlinks blocked on Android f2fs). Global installs skip `--cwd`.
 
 **Execution modes**:
 - `_bun_js()`: `exec grun buno --preload env-preload.js --config=bunfig.toml [args]` — for JS/TS execution

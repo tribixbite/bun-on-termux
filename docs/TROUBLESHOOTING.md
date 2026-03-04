@@ -73,16 +73,16 @@ bun src/index.ts
 
 **Symptom**: `EACCES: Permission denied while installing <package>` on every package, and `node_modules/` stays empty (0 packages installed). Directories may be created but files inside are missing.
 
-**Cause**: The wrapper script `cd`s to `~/.bun/tmp` (safe CWD) before running buno. This means `bun install` looks for `package.json` in the wrong directory and writes `node_modules/` to the wrong location. Additionally, if `~/.bun/install/cache/` was deleted or corrupted (e.g., after a Termux crash), bun silently fails to extract packages.
+**Cause**: Two issues compound:
+1. **CWD mismatch**: The wrapper `cd`s to `~/.bun/tmp` before exec, so bun looks for `package.json` in the wrong directory.
+2. **Hardlinks blocked**: Android f2fs blocks hardlinks (`EACCES`), and bun uses hardlinks by default.
 
-**Fix**: Pass `--cwd` and `--backend=copyfile` explicitly:
+**Fix**: Update to the latest `bun-minimal` wrapper, which auto-injects `--cwd` and `--backend=copyfile` for all package management commands. After updating, `bun install` and `bun add` should work without any extra flags.
+
+If you're on an older wrapper version, pass the flags manually:
 
 ```bash
-# The reliable bun install invocation for Termux:
-bun install --cwd /absolute/path/to/project --backend=copyfile
-
-# Example:
-bun install --cwd $HOME/git/myproject --backend=copyfile
+bun install --cwd $(pwd) --backend=copyfile
 ```
 
 If the cache was deleted, recreate it first:
@@ -90,8 +90,6 @@ If the cache was deleted, recreate it first:
 ```bash
 mkdir -p ~/.bun/install/cache
 ```
-
-**Note**: Without `--cwd`, the wrapper's safe-CWD redirect causes bun to install to `~/.bun/tmp/node_modules/` instead of your project. Without `--backend=copyfile`, bun may create empty directories without actual file contents.
 
 ## `bun add` shows EACCES permission warnings
 

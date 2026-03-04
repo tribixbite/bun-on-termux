@@ -83,7 +83,9 @@ if [ "$1" = "run" ] && [ -n "$2" ]; then
                 _bun_js ${script_command#bun } "$@"
             else
                 # Shell command: execute in Termux shell (has native env vars)
+                # Add node_modules/.bin to PATH (same as npm/bun do natively)
                 cd "$_ORIG_CWD" 2>/dev/null
+                export PATH="${_ORIG_CWD}/node_modules/.bin:$PATH"
                 if [ $# -gt 0 ]; then
                     eval "$script_command" '"$@"'
                 else
@@ -117,19 +119,27 @@ if [ "$1" = "x" ]; then
 fi
 
 # --- Package management (install, add, remove, update) ---
+# Must pass --cwd since _bun_cmd cd's to _SAFE_DIR, and --backend=copyfile
+# because Android f2fs blocks hardlinks (EACCES).
 if [ "$1" = "install" ] || [ "$1" = "i" ] || [ "$1" = "add" ] || [ "$1" = "remove" ] || [ "$1" = "rm" ] || [ "$1" = "update" ]; then
     has_global=false
     has_backend=false
+    has_cwd=false
     for arg in "$@"; do
         case "$arg" in
             -g|--global) has_global=true ;;
             --backend=*) has_backend=true ;;
+            --cwd|--cwd=*) has_cwd=true ;;
         esac
     done
-    if [ "$has_global" = true ] && [ "$has_backend" = false ]; then
-        _bun_cmd "$@" --backend=copyfile
+    _extra_args=()
+    if [ "$has_backend" = false ]; then
+        _extra_args+=(--backend=copyfile)
     fi
-    _bun_cmd "$@"
+    if [ "$has_global" = false ] && [ "$has_cwd" = false ]; then
+        _extra_args+=(--cwd "$_ORIG_CWD")
+    fi
+    _bun_cmd "$@" "${_extra_args[@]}"
 fi
 
 # --- Default: pass through with env preload ---

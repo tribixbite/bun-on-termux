@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-03-04
+
+### Fixed
+- **`bun install` / `bun add` CWD mismatch**: The wrapper's `cd ~/.bun/tmp` caused bun to look for `package.json` in the wrong directory. Now auto-injects `--cwd "$_ORIG_CWD"` for all package management commands (install, add, remove, update). No more manual `--cwd` workaround needed.
+- **Hardlink EACCES on all installs**: Previously only global installs got `--backend=copyfile`. Now all package management commands get it automatically, since Android f2fs blocks hardlinks regardless of scope.
+- **`node_modules/.bin` not in PATH**: Shell scripts in `package.json` couldn't find locally-installed binaries. Wrapper now adds `node_modules/.bin` to PATH before executing shell scripts (matching npm/bun native behavior).
+
 ## 2025-02-15
 
 ### Upgraded
