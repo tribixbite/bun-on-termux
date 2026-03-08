@@ -232,6 +232,88 @@ grun ~/.bun/bin/buno --version
 echo $PATH | tr ':' '\n' | grep -i bun
 ```
 
+## `spawnSync` can't resolve bare command names
+
+**Symptom**: `spawnSync("tmux", ["list-sessions"])` returns `{ status: undefined, stdout: null }`. No error, no output — it silently fails.
+
+**Cause**: Bun's spawnSync doesn't resolve bare command names via the PATH environment variable the way Node.js or bash do. PATH lookups fail silently.
+
+**Fix**: Always resolve the full binary path before calling spawnSync:
+
+```typescript
+import { existsSync } from "fs";
+import { join } from "path";
+
+function resolveTermuxBin(name: string): string {
+  const prefix = process.env.PREFIX ?? "/data/data/com.termux/files/usr";
+  const candidate = join(prefix, "bin", name);
+  if (existsSync(candidate)) return candidate;
+  return name; // fallback — will likely fail under bun
+}
+
+// Use resolved paths:
+const TMUX_BIN = resolveTermuxBin("tmux");
+const ADB_BIN = resolveTermuxBin("adb");
+spawnSync(TMUX_BIN, ["list-sessions"], { encoding: "utf-8" });
+```
+
+**Affected commands**: tmux, adb, am, termux-am — any binary invoked via spawnSync.
+
+## `am` / `app_process` commands silently fail (LD_PRELOAD stripped)
+
+**Symptom**: `spawnSync("am", ["start", "-n", "com.termux/..."])` returns exit code 0 but the intent never fires. No error output. Activities don't launch, services don't start.
+
+**Cause**: Bun's glibc runner strips `LD_PRELOAD` from the environment. Termux's `libtermux-exec-ld-preload.so` is an exec interceptor required by `app_process` (the JVM wrapper that `$PREFIX/bin/am` uses internally). Without this library preloaded, `app_process` runs but fails to communicate with Android's ActivityManager — it returns success but the intent is silently dropped.
+
+**Why it's hard to diagnose**: The command exits 0, produces no stderr, and the binary runs to completion. Only the absence of the expected side effect reveals the problem.
+
+**Fix**: Explicitly set `LD_PRELOAD` in the env passed to spawnSync:
+
+```typescript
+function amEnv(): NodeJS.ProcessEnv {
+  const prefix = process.env.PREFIX ?? "/data/data/com.termux/files/usr";
+  const ldPreload = join(prefix, "lib", "libtermux-exec-ld-preload.so");
+  return { ...process.env, LD_PRELOAD: ldPreload };
+}
+
+const AM_BIN = resolveTermuxBin("am");
+spawnSync(AM_BIN, ["startservice", "--user", "0", ...], {
+  timeout: 5000, stdio: "ignore", env: amEnv()
+});
+```
+
+**Verification**: Create a marker file via RunCommandService — if the file appears, am is working:
+
+```bash
+# From bun — test am with LD_PRELOAD fix:
+bun -e "
+const {spawnSync} = require('child_process');
+const env = {...process.env, LD_PRELOAD: '/data/data/com.termux/files/usr/lib/libtermux-exec-ld-preload.so'};
+spawnSync('/data/data/com.termux/files/usr/bin/am', [
+  'startservice', '--user', '0',
+  '-n', 'com.termux/com.termux.app.RunCommandService',
+  '-a', 'com.termux.RUN_COMMAND',
+  '--es', 'com.termux.RUN_COMMAND_PATH', '/data/data/com.termux/files/usr/bin/touch',
+  '--esa', 'com.termux.RUN_COMMAND_ARGUMENTS', '/data/data/com.termux/files/usr/tmp/am-test-marker',
+  '--ez', 'com.termux.RUN_COMMAND_BACKGROUND', 'true',
+], {timeout: 5000, env});
+"
+# Check: ls -la $PREFIX/tmp/am-test-marker
+```
+
+## `process.platform` reports "linux" instead of "android"
+
+**Symptom**: Platform-gated packages behave differently under bun vs node. For example, Playwright rejects "android" but accepts "linux".
+
+**Cause**: Bun's binary is compiled for `linux-aarch64` (glibc), so it reports `process.platform === "linux"`. Node.js on Termux is compiled for `android-aarch64` (bionic), reporting `"android"`.
+
+**Implications**:
+- **Playwright**: Use `bun` to run `@playwright/mcp` or playwright scripts — node will error with "Unsupported platform: android"
+- **esbuild**: Bun installs `linux-arm64-gnu` variant; node needs `android-arm64` (use `fix-android-binaries.mjs`)
+- **Platform checks**: Any `if (process.platform === "linux")` check passes under bun but fails under node on the same device
+
+**Workaround**: Run platform-gated tools under bun. If node is required, check if the package provides an android-specific variant.
+
 ## Debugging
 
 ### Wrapper debug

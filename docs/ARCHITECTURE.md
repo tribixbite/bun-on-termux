@@ -193,6 +193,34 @@ Despite this overhead, bun still starts faster than native Node.js on Termux (~8
 
 `bun install` uses `copyfile` backend instead of the default `hardlink`. This is ~2-3x slower than hardlink on native Linux, but still ~2x faster than npm on Termux. The bottleneck is I/O, not CPU.
 
+## Child process gotchas
+
+### LD_PRELOAD is stripped from child processes
+
+The glibc runner environment strips `LD_PRELOAD` from child processes spawned by bun. This has a critical consequence: **Termux's exec interceptor (`libtermux-exec-ld-preload.so`) is not inherited**.
+
+This interceptor is required by:
+- `$PREFIX/bin/am` — the app_process wrapper for Android's ActivityManager
+- Any command that relies on Termux's exec path translation
+
+Without the interceptor, `app_process`-based commands run but produce no effect — they exit 0 silently. To restore the interceptor for child processes:
+
+```typescript
+const env = {
+  ...process.env,
+  LD_PRELOAD: `${process.env.PREFIX}/lib/libtermux-exec-ld-preload.so`
+};
+spawnSync(amBin, args, { env });
+```
+
+### spawnSync PATH resolution fails
+
+Bun's `spawnSync` cannot resolve bare command names (e.g., `"tmux"`, `"adb"`) via PATH. It returns `{ status: undefined, stdout: null }` without error. Always pre-resolve binary paths using `$PREFIX/bin/<name>` lookups.
+
+### process.platform reports "linux"
+
+Because bun is a glibc binary running through ld.so, `process.platform` returns `"linux"` rather than Node.js's `"android"`. This bypasses platform gates in packages like Playwright (which rejects "android") but causes mismatches with native module resolution (bun installs `linux-arm64-gnu` variants, but node needs `android-arm64`).
+
 ## Security notes
 
 - The wrapper runs within Termux's sandbox (no root required)
