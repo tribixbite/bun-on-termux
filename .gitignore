@@ -10,10 +10,16 @@ temp-*
 # Binary backups
 *.orig
 *.backup
+*.bak
+
+# Build artifacts
+bun-termux
+bun-shim.so
 
 # Test outputs
 bun-test-*/
 test-results/
+tests/last-run.log
 
 # Environment files
 .env

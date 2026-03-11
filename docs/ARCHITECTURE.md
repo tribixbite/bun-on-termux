@@ -2,7 +2,7 @@
 
 ## Overview
 
-Bun is a glibc-compiled binary. Android uses bionic libc. To bridge this gap, we use `glibc-runner` (`grun`) which invokes glibc's dynamic linker (`ld-linux-aarch64.so.1`) as a program loader. A bash wrapper script and a JS preload script handle the side effects of this approach.
+Bun is a glibc-compiled binary. Android uses bionic libc. This project bridges the gap using a three-layer approach: a bash wrapper for argument routing, a C wrapper for userland exec, and an LD_PRELOAD shim for filesystem interception.
 
 ## Component diagram
 
@@ -12,219 +12,172 @@ User command
      v
 ~/.bun/bin/bun          (bash wrapper script)
      |
-     |- saves original CWD
      |- resolves relative paths to absolute
-     |- cd ~/.bun/tmp (safe CWD)
+     |- parses package.json scripts
+     |- injects --cwd/--backend for pkg management
      |
      v
-grun                    (glibc-runner: exec ld.so binary)
+~/.bun/bin/bun-termux   (C userland exec wrapper)
+     |
+     |- loads ld.so ELF segments into memory
+     |- constructs stack with argc/argv/envp/auxv
+     |- passes env vars natively (no preload needed)
+     |- filters LD_PRELOAD/LD_LIBRARY_PATH
+     |- sets BUN_FAKE_ROOT
      |
      v
 ld-linux-aarch64.so.1   (glibc dynamic linker)
      |
-     |- zeroes C environ pointer (side effect)
+     |- --preload bun-shim.so
+     |- --library-path /usr/glibc/lib
      |- loads glibc shared libraries
      |
      v
-buno                    (real bun binary, v1.3.9)
+bun-shim.so             (LD_PRELOAD interception)
      |
-     |- --preload env-preload.js
-     |     |
-     |     |- reads /proc/self/environ
-     |     |- populates process.env
+     |- intercepts openat: /proc/stat -> fake CPU info
+     |- intercepts openat: /, /data, /storage -> safe dir
+     |- intercepts stat/access: restricted paths -> synthetic
+     |- intercepts execve: shebangs -> $PREFIX/bin translation
      |
      v
-User's JS/TS code       (full process.env available)
+buno                    (real bun binary, v1.3.10)
+     |
+     v
+User's JS/TS code       (full process.env, os.cpus(), etc.)
 ```
 
 ## Components
 
-### 1. Wrapper script (`~/.bun/bin/bun`)
+### 1. Bash wrapper (`~/.bun/bin/bun`)
 
-**Source**: `wrappers/bun-minimal` (~145 lines)
+**Source**: `wrappers/bun`
 
-The wrapper is the entry point for all `bun` commands. It handles:
-
-**CWD management**: Saves original CWD, converts all file-like arguments to absolute paths, then `cd`s to `~/.bun/tmp` before exec. This avoids the `CouldntReadCurrentDirectory` error caused by glibc's `getcwd()` failing to traverse `/data/data/` paths.
+The bash wrapper is the user-facing entry point. It handles high-level argument routing that would be complex in C:
 
 **Command routing**:
-- `--version`, `--help`: Direct passthrough to buno (no preload needed)
-- `bun run <file>`: Detects file, shifts args, calls `_bun_js` with absolute path
-- `bun run <script-name>`: Parses `package.json` to extract the script command, then:
-  - If script is `bun run <file>` or `bun <args>`: routes back through `_bun_js`
-  - If script is a shell command: `eval`s in native Termux shell (preserves env vars)
-- `bun <file>`: Detects file argument, routes to `_bun_js`
-- `test`, `eval`, `repl`, `build`, `-e`: Routes to `_bun_js` (needs env preload)
-- `bun x` / bunx: Routes to `_bun_cmd` (no preload, uses grun only)
-- `install`, `add`, `remove`, `update`: Routes to `_bun_cmd` with auto-injected `--cwd $_ORIG_CWD` (restores real CWD) and `--backend=copyfile` (hardlinks blocked on Android f2fs). Global installs skip `--cwd`.
+- `--version`, `--help`: Direct passthrough to bun-termux (no config needed)
+- `bun <file>`: Detects file, resolves to absolute path, calls `_bun_js`
+- `bun run <file>`: Same as above
+- `bun run <script-name>`: Parses `package.json` to extract the script command:
+  - `"bun run <file>"` -> routes back through `_bun_js`
+  - `"bun <args>"` -> routes through `_bun_js`
+  - Shell command -> `eval` in native Termux bash (preserves env)
+- `test`, `eval`, `repl`, `build`, `-e`, `-p`, `--eval`: Routes to `_bun_js`
+- `bun x` / bunx: Routes to `_bun_cmd`
+- `install`, `add`, `remove`, `update`: Auto-injects `--cwd` and `--backend=copyfile`
 
 **Execution modes**:
-- `_bun_js()`: `exec grun buno --preload env-preload.js --config=bunfig.toml [args]` — for JS/TS execution
-- `_bun_cmd()`: `exec grun buno --config=bunfig.toml [args]` — for non-JS commands (install, etc.)
+- `_bun_js()`: `exec bun-termux --config=bunfig.toml [args]`
+- `_bun_cmd()`: Same, used for package management with additional flags
 
-**Stderr filtering**: Both modes pipe stderr through `grep -v "Cannot read directory"` to suppress non-fatal noise from glibc's directory traversal attempts.
+**Why bash**: Package.json parsing (grep+sed) and the variety of command routing patterns are natural in bash. The overhead is ~5ms on ARM64.
 
-### 2. Environment preload (`env-preload.js`)
+### 2. C wrapper (`bun-termux`)
 
-**Problem**: When `ld.so` is invoked as a program loader (not as `PT_INTERP`), glibc's `__libc_start_main` zeroes the C `environ` pointer. The kernel's `/proc/self/environ` still has all 100+ environment variables, but `process.env` in JS shows 0 keys.
+**Source**: `src/bun-termux.c`
 
-**Solution**: A preload script runs before user code:
+The C wrapper replaces `grun` (glibc-runner) as the execution backend. It performs userland exec:
 
-```javascript
-if (Object.keys(process.env).length === 0) {
-    const data = fs.readFileSync("/proc/self/environ", "utf8");
-    for (const entry of data.split("\0")) {
-        const idx = entry.indexOf("=");
-        if (idx > 0) {
-            process.env[entry.substring(0, idx)] = entry.substring(idx + 1);
-        }
-    }
-}
-```
+1. **Loads ld.so**: Opens the glibc dynamic linker, reads ELF headers, maps all PT_LOAD segments into memory
+2. **Constructs stack**: Builds a new stack with argc, argv, envp, and auxiliary vector (AT_PHDR, AT_ENTRY, AT_RANDOM, etc.)
+3. **Passes env vars**: Environment variables are placed directly on the new stack — no preload script needed
+4. **Filters env**: Removes `LD_PRELOAD` and `LD_LIBRARY_PATH` from the environment (uses `--library-path` flag to ld.so instead)
+5. **Sets BUN_FAKE_ROOT**: Tells the shim where the safe directory is
+6. **Jumps to entry**: Blocks signals, switches stack pointer, and branches to ld.so's entry point via inline assembly
 
-The guard `Object.keys(process.env).length === 0` ensures this only runs when env vars are actually missing (i.e., via grun). If bun ever runs natively without grun, the preload is a no-op.
+**Why userland exec**: Standard `exec()` would use bionic's dynamic linker. By manually loading ld.so and constructing the stack, we have full control over the glibc environment without needing `grun`.
 
-### 3. Bun binary (`buno`)
+### 3. LD_PRELOAD shim (`bun-shim.so`)
+
+**Source**: `src/shim.c`
+
+The shim is preloaded by ld.so (via `--preload` flag) and intercepts filesystem syscalls:
+
+| Intercepted | Purpose |
+|-------------|---------|
+| `openat`/`openat64`/`open`/`open64` | Redirect `/proc/stat` reads to a fake file with CPU info (fixes `os.cpus()`). Redirect `O_DIRECTORY` opens of restricted paths (`/`, `/data`, `/storage`) to `BUN_FAKE_ROOT` (fixes `CouldntReadCurrentDirectory`). |
+| `stat`/`lstat`/`fstatat`/`__xstat`/`__lxstat` | Synthesize directory stat results for restricted paths (fixes `fs.existsSync('/')`, `fs.statSync('/')`) |
+| `access`/`faccessat` | Intercept permission checks on restricted paths (fixes `fs.accessSync`) |
+| `execve` | Parse shebangs and translate FHS paths (`/usr/bin/env`, `/bin/sh`) to `$PREFIX/bin` equivalents |
+
+**Fake /proc/stat**: Android restricts access to `/proc/stat`. The shim generates a synthetic file with per-CPU lines based on `sysconf(_SC_NPROCESSORS_ONLN)`. Uses `memfd_create` (kernel >= 3.17) with temp file fallback.
+
+**Directory redirection**: Bun's internal `readDirInfo()` traverses the CWD's parent hierarchy. On Android, reading `/data/data/` fails with EACCES. The shim redirects these to `BUN_FAKE_ROOT` (typically `~/.bun/tmp/fake-root`).
+
+**Shebang translation**: When bun spawns a child process with a shebang like `#!/usr/bin/env node`, the shim translates this to `$PREFIX/bin/env node` before calling the real `execve`.
+
+### 4. Bun binary (`buno`)
 
 - **File**: `~/.bun/bin/buno`
 - **Variant**: `bun-linux-aarch64` (glibc, not musl)
-- **Version**: v1.3.9
+- **Version**: v1.3.10
 - **Size**: ~100MB
 - **Source**: Official [oven-sh/bun](https://github.com/oven-sh/bun) GitHub releases
 
 Named `buno` ("bun original") so the wrapper script can use the standard `bun` command name.
 
-### 4. Configuration (`bunfig.toml`)
+### 5. Configuration (`bunfig.toml`)
 
 **Location**: `~/.bun/bin/bunfig.toml` (referenced via `--config=` flag)
 
 Key settings:
-- `[install] backend = "copyfile"` — Termux can't hardlink across filesystems; copyfile works everywhere
-- `[install] auto = false` — disable lifecycle scripts that may fail on Android
-- `[run] preload = ["/path/to/env-preload.js"]` — backup preload config (wrapper's `--preload` flag is the primary mechanism)
-- `[run] shell = "system"` — use Termux's native shell for script execution
-
-Note: The bunfig.toml `[run] preload` setting has a chicken-and-egg problem. Bun needs `HOME` and `BUN_INSTALL` env vars to locate the config file, but those vars are only available after the preload runs. The `--preload` CLI flag in the wrapper bypasses this.
-
-### 5. glibc-runner (`grun`)
-
-- **Package**: `glibc-runner` via `pacman -S glibc-runner`
-- **Location**: `/data/data/com.termux/files/usr/bin/grun`
-- **Glibc root**: `/data/data/com.termux/files/usr/glibc/`
-- **Dynamic linker**: `/data/data/com.termux/files/usr/glibc/lib/ld-linux-aarch64.so.1`
-
-Core execution (from `glibc-runner.sh` line 276):
-```bash
-exec $(_glibc-runner_debug) ld.so $@
-```
-
-This invokes the glibc dynamic linker as a program, passing the target binary as an argument. The linker loads all required glibc shared libraries and transfers control to the binary.
+- `[install] backend = "copyfile"` — hardlinks blocked on Android f2fs
+- `[install] auto = false` — disable lifecycle scripts that may fail
+- `[run] shell = "system"` — use Termux's native shell
 
 ## Execution flows
 
 ### `bun script.ts`
 
 ```
-1. Wrapper: _ORIG_CWD=$(pwd), _abs_path("script.ts") -> /full/path/script.ts
+1. Wrapper: _abs_path("script.ts") -> /full/path/script.ts
 2. Wrapper: file exists? yes -> shift, _bun_js "/full/path/script.ts"
-3. _bun_js: cd ~/.bun/tmp
-4. _bun_js: exec grun buno --preload env-preload.js --config=bunfig.toml /full/path/script.ts
-5. grun: exec ld.so buno --preload env-preload.js --config=bunfig.toml /full/path/script.ts
-6. buno: loads env-preload.js -> reads /proc/self/environ -> populates process.env
-7. buno: executes /full/path/script.ts with full environment
-```
-
-### `bun run dev` (package.json script: `"dev": "bun run src/index.ts"`)
-
-```
-1. Wrapper: $1="run", $2="dev" -> not a file
-2. Wrapper: finds package.json -> extracts "bun run src/index.ts"
-3. Wrapper: script starts with "bun run " -> extract "src/index.ts"
-4. Wrapper: _abs_path("src/index.ts") -> /full/path/src/index.ts
-5. Wrapper: shift 2, _bun_js "/full/path/src/index.ts"
-6. (continues as direct file execution above)
-```
-
-### `bun run dev` (package.json script: `"dev": "echo hello && node server.js"`)
-
-```
-1. Wrapper: $1="run", $2="dev" -> not a file
-2. Wrapper: finds package.json -> extracts "echo hello && node server.js"
-3. Wrapper: script doesn't start with "bun" -> shell command
-4. Wrapper: cd back to original CWD
-5. Wrapper: eval "echo hello && node server.js"
-6. Executes in native Termux bash (full env vars available natively)
+3. _bun_js: exec bun-termux --config=bunfig.toml /full/path/script.ts
+4. bun-termux: load ld.so, construct stack with 98+ env vars
+5. ld.so: preload bun-shim.so, load glibc, exec buno
+6. buno: executes /full/path/script.ts with full environment
 ```
 
 ### `bun install`
 
 ```
 1. Wrapper: $1="install" -> package management
-2. Wrapper: no -g flag -> _bun_cmd "install"
-3. _bun_cmd: cd ~/.bun/tmp
-4. _bun_cmd: exec grun buno --config=bunfig.toml install
-5. buno: reads bunfig.toml -> backend=copyfile
-6. buno: resolves, downloads, extracts packages using copyfile
+2. Wrapper: inject --backend=copyfile --cwd /original/cwd
+3. _bun_cmd: exec bun-termux --config=bunfig.toml install --backend=copyfile --cwd /original/cwd
+4. bun-termux: userland exec with env vars
+5. buno: resolves, downloads, extracts packages using copyfile
 ```
 
-## Why not patchelf?
+### `bun build --compile`
 
-We investigated using `patchelf` to modify the bun binary's ELF headers to embed the glibc interpreter path directly, which would eliminate the grun wrapper entirely. This failed for two reasons:
+```
+1. Wrapper: $1="build" -> _bun_js
+2. _bun_js: exec bun-termux --config=bunfig.toml build --compile ...
+3. bun-termux: userland exec
+4. Shim: openat("/") redirected to fake-root (fixes dir traversal)
+5. Shim: /proc/stat spoofed (os.cpus() works)
+6. buno: compiles bundle -> produces working aarch64 binary
+```
 
-1. **libc.so is a linker script**: glibc's `libc.so` in Termux is a GNU ld text script (not an ELF binary). It directs the linker to load `libc.so.6`. When patchelf'd binaries try to load `libc.so` directly via `DT_NEEDED`, they get "invalid ELF header" errors.
-
-2. **LD_PRELOAD conflict**: Termux's `libtermux-exec-ld-preload.so` is a bionic library. When a patchelf'd binary runs with glibc's dynamic linker, it tries to load this bionic preload library through glibc, causing segfaults.
-
-## Performance characteristics
-
-### Overhead breakdown
+## Performance
 
 | Layer | Overhead | Notes |
 |-------|----------|-------|
 | Wrapper (bash) | ~5ms | Argument parsing, path resolution |
-| grun | ~10ms | Shell script, ld.so setup |
+| bun-termux (C) | ~5ms | ELF loading, stack construction |
 | ld.so | ~20ms | Dynamic library loading |
-| env-preload.js | ~2ms | Read /proc/self/environ, parse, populate |
-| **Total overhead** | **~37ms** | Added to every bun invocation |
-
-Despite this overhead, bun still starts faster than native Node.js on Termux (~85ms vs ~137ms) because bun's runtime itself is lighter.
-
-### Package install performance
-
-`bun install` uses `copyfile` backend instead of the default `hardlink`. This is ~2-3x slower than hardlink on native Linux, but still ~2x faster than npm on Termux. The bottleneck is I/O, not CPU.
-
-## Child process gotchas
-
-### LD_PRELOAD is stripped from child processes
-
-The glibc runner environment strips `LD_PRELOAD` from child processes spawned by bun. This has a critical consequence: **Termux's exec interceptor (`libtermux-exec-ld-preload.so`) is not inherited**.
-
-This interceptor is required by:
-- `$PREFIX/bin/am` — the app_process wrapper for Android's ActivityManager
-- Any command that relies on Termux's exec path translation
-
-Without the interceptor, `app_process`-based commands run but produce no effect — they exit 0 silently. To restore the interceptor for child processes:
-
-```typescript
-const env = {
-  ...process.env,
-  LD_PRELOAD: `${process.env.PREFIX}/lib/libtermux-exec-ld-preload.so`
-};
-spawnSync(amBin, args, { env });
-```
-
-### spawnSync PATH resolution fails
-
-Bun's `spawnSync` cannot resolve bare command names (e.g., `"tmux"`, `"adb"`) via PATH. It returns `{ status: undefined, stdout: null }` without error. Always pre-resolve binary paths using `$PREFIX/bin/<name>` lookups.
-
-### process.platform reports "linux"
-
-Because bun is a glibc binary running through ld.so, `process.platform` returns `"linux"` rather than Node.js's `"android"`. This bypasses platform gates in packages like Playwright (which rejects "android") but causes mismatches with native module resolution (bun installs `linux-arm64-gnu` variants, but node needs `android-arm64`).
+| bun-shim.so | <1ms | Constructor + syscall interception |
+| **Total overhead** | **~30ms** | Down from ~37ms with grun |
 
 ## Security notes
 
-- The wrapper runs within Termux's sandbox (no root required)
-- `/proc/self/environ` is readable only by the process owner (same UID)
-- The preload script only activates when `process.env` is empty (grun scenario)
-- No binary patching or ELF modification is performed (grun handles this transparently)
-- All file operations stay within `~/.bun/` and the user's project directories
+- Runs within Termux's sandbox (no root required)
+- The shim only intercepts specific paths — all other syscalls pass through
+- No binary patching or ELF modification performed
+- `BUN_FAKE_ROOT` is a user-owned temp directory
+- Environment variables passed natively (no `/proc/self/environ` parsing)
+
+## Legacy: env-preload.js
+
+The `env-preload.js` preload script is kept in the repo as a fallback for systems without the C wrapper. It reads `/proc/self/environ` and populates `process.env` when env vars are missing (the `grun`-only scenario). With the C wrapper, this is unnecessary — env vars are passed natively via the constructed stack.
