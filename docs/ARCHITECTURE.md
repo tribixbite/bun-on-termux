@@ -108,6 +108,8 @@ The shim is preloaded by ld.so (via `--preload` flag) and intercepts filesystem 
 
 **Shebang translation**: When bun spawns a child process with a shebang like `#!/usr/bin/env node`, the shim translates this to `$PREFIX/bin/env node` before calling the real `execve`.
 
+**Scope limitation**: The shim intercepts glibc function calls only. Bun uses raw syscalls (`io_uring`, `SYS_openat`, `SYS_statx`) for JS-level file I/O, which bypass LD_PRELOAD entirely. This means `fs.readFileSync('/etc/hosts')` does NOT go through the shim — only glibc-internal operations do (directory traversal, `/proc` reads, DNS resolution via glibc NSS).
+
 ### 4. Bun binary (`buno`)
 
 - **File**: `~/.bun/bin/buno`

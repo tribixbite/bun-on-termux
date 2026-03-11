@@ -243,6 +243,13 @@ static int do_openat(int (*real_fn)(int, const char *, int, ...),
         }
     }
 
+    /* NOTE: FHS path translation (/etc -> $PREFIX/etc) is NOT done here.
+     * Bun uses raw syscalls (io_uring / SYS_openat) for JS-level file I/O,
+     * bypassing LD_PRELOAD hooks entirely. Only glibc-internal opens
+     * (directory traversal, /proc reads) come through this function.
+     * FHS translation in execve shebangs still works because execve is
+     * intercepted at the libc level. */
+
     if (flags & O_CREAT) {
         mode_t mode = va_arg(ap, mode_t);
         return real_fn(dirfd, pathname, flags, mode);

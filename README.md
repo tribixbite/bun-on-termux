@@ -102,7 +102,7 @@ bun --version
 | `bun add <pkg>` | works | Local and global |
 | `bun test` | works | Test runner with fixture discovery |
 | `bun build` | works | Bundler with all flags |
-| `bun build --compile` | works | Produces working binaries |
+| `bun build --compile` | works | ~14KB output (embeds wrapper, not full runtime) |
 | `bun -e '<code>'` | works | Inline eval |
 | `bun repl` | works | Interactive REPL |
 | `bunx <pkg>` | works | Package execution |
@@ -117,7 +117,8 @@ bun --version
 
 ## Known limitations
 
-- **`bun build --compile` output**: Compiled binaries work on the same device but still depend on Termux glibc + buno. Not truly standalone.
+- **`bun build --compile` output**: Compiled binaries are ~14KB (embed the wrapper, not buno). They run on any Termux+glibc-runner device with buno + bun-shim.so installed, but are not standalone on non-Termux systems.
+- **LD_PRELOAD scope**: Bun uses raw syscalls for JS-level file I/O (`fs.readFileSync`, `fs.statSync`), bypassing the shim. Shim interceptions only apply to glibc-internal operations (directory traversal, /proc reads, shebangs, hardlinks).
 - **`fs.watch()`**: May not trigger reliably on all Android kernels due to inotify restrictions.
 - **Platform detection**: Bun reports `linux-arm64` instead of `android-arm64`. Optional native binaries like `@rollup/rollup-android-arm64` must be installed via `npm install` if needed.
 - **bash wrapper overhead**: Package.json parsing adds ~50-150ms startup overhead from fork/exec. Future v2 may port argument routing to C.
@@ -190,7 +191,7 @@ bun-on-termux/
     shim.c        <- LD_PRELOAD shim
   wrappers/
     bun           <- main wrapper script
-    bunx          <- bunx wrapper (legacy, `bun x` preferred)
+    bunx          <- bunx wrapper (delegates to bun x)
     env-preload.js <- legacy preload (kept as fallback)
   tests/
     run-tests.sh  <- test runner (80 tests)
@@ -198,8 +199,11 @@ bun-on-termux/
     fixtures/     <- test fixture files
   config/
     bunfig.toml   <- global bun configuration
+  helper_scripts/
+    replace-runtime.py <- swap runtime in compiled binaries
   docs/
     ARCHITECTURE.md
+    COMPARISON.md
     TROUBLESHOOTING.md
     ...
   Makefile        <- build system

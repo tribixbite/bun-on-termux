@@ -115,8 +115,10 @@ Self-contained design: bun's ELF binary (~92MB) is embedded inside the wrapper. 
 | Compiler | clang (native + cross) | clang (native + cross) | clang (native + cross) |
 | Wrapper binary size | ~14KB | ~15KB | ~11KB |
 | Shim binary size | ~20KB | ~12KB | ~4KB |
-| `bun build --compile` | Works | Works + replace_runtime.py | Works (self-contained) |
-| Compiled binary portability | Same device (needs glibc) | Same device (needs glibc) | Single file (cache needed) |
+| `bun build --compile` | Works (~14KB output) | Works + replace_runtime.py | Works (self-contained) |
+| Compiled binary size | ~14KB (embeds wrapper) | ~100MB (embeds bun) until replaced | ~92MB (embeds bun + extracts to cache) |
+| Compiled binary portability | Any Termux+glibc device | Same device (or replace_runtime.py) | Single file (cache needed) |
+| replace-runtime helper | Included (mostly unnecessary) | Included (required for small binaries) | N/A |
 
 ### Testing
 
@@ -139,6 +141,15 @@ Happ1ness-dev's approach keeps the wrapper minimal — no bash, no argument rout
 ### bun-termux-loader: self-contained binaries
 
 kaan-escober's approach embeds the entire bun binary inside the wrapper, producing self-contained executables. The shim only handles `dlopen` for native library path rewriting. Designed primarily for distributing `bun build --compile` output as single-file binaries. The ~92MB embedded binary and first-run extraction are acceptable tradeoffs for portability.
+
+## LD_PRELOAD limitations
+
+All three projects use LD_PRELOAD shims, which can only intercept glibc function calls. Bun uses raw syscalls (io_uring, `SYS_openat`, `SYS_statx`) for JS-level file I/O, bypassing the shim entirely. This means:
+
+- **Intercepted**: glibc-internal calls (directory traversal, /proc reads, DNS resolution, shebang handling, hardlink operations)
+- **Not intercepted**: `fs.readFileSync()`, `fs.statSync()`, `fs.accessSync()`, and other JS-level file operations that bun handles via raw syscalls
+
+FHS path translation (e.g., `/etc/hosts` -> `$PREFIX/etc/hosts`) cannot be implemented via LD_PRELOAD for bun's JS file APIs. Achieving this would require seccomp-bpf or FUSE, both of which have significant complexity and performance tradeoffs.
 
 ## Credit
 
