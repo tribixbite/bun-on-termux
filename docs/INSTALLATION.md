@@ -6,280 +6,132 @@ Complete guide for installing Bun on Termux Android.
 
 ### System Requirements
 - **Android 7+** (API level 24+)
-- **Termux app** installed from F-Droid or GitHub (NOT Google Play Store)
-- **ARM64 (aarch64) architecture** (most modern Android devices)
-- **At least 200MB free space** for installation
+- **Termux app** from F-Droid or GitHub (NOT Google Play Store)
+- **ARM64 (aarch64) architecture**
+- **clang** compiler (for building C components)
+- **~300MB free space**
 
 ### Package Manager Setup
 
-This project requires **termux-pacman** instead of the default `pkg` manager.
-
-#### Option 1: Fresh Termux Installation
-If you're starting with a fresh Termux installation:
+This project requires **termux-pacman** for glibc support.
 
 ```bash
-# Download and run the termux-pacman bootstrap
-pkg update
-pkg install wget
-wget https://github.com/termux-pacman/termux-packages/releases/latest/download/bootstrap-aarch64.zip
-unzip bootstrap-aarch64.zip
-./bootstrap-aarch64.sh
-```
+# Install termux-pacman if not already present
+# See: https://github.com/termux-pacman/termux-packages
 
-#### Option 2: Existing Termux Installation
-If you already have Termux set up:
-
-```bash
-# WARNING: This will replace your package manager
-# Back up important data first
-
-# Download termux-pacman bootstrap
-pkg install wget
-wget https://github.com/termux-pacman/termux-packages/releases/latest/download/bootstrap-aarch64.zip
-unzip bootstrap-aarch64.zip
-
-# IMPORTANT: This step replaces pkg with pacman
-./bootstrap-aarch64.sh
-```
-
-#### Verify pacman installation
-```bash
-# Check that pacman is working
+# Verify pacman is working
 pacman --version
 pacman -Sy  # Update package database
 ```
 
-### Install glibc-runner
+### Install Dependencies
 
 ```bash
-# Install glibc-runner (required for running glibc binaries)
-pacman -S glibc-runner
+# glibc-runner provides the glibc dynamic linker
+pacman -S glibc-runner glibc
 
-# Verify installation
-grun --version
+# clang is needed to build the C wrapper and shim
+pkg install clang git
 ```
 
-## Bun Installation
+## Installation
 
-### Automatic Installation (Recommended)
+### Automatic (Recommended)
 
 ```bash
-# Clone this repository
 git clone https://github.com/tribixbite/bun-on-termux.git
 cd bun-on-termux
-
-# Run setup script
-chmod +x setup.sh
-./setup.sh
-
-# Verify installation
-bun --version
+chmod +x setup.sh && ./setup.sh
 ```
+
+This will:
+1. Build the C wrapper (`bun-termux`) and LD_PRELOAD shim (`bun-shim.so`)
+2. Install to `~/.bun/bin/` and `~/.bun/lib/`
+3. Copy the wrapper script, config, and binary
+4. Add `~/.bun/bin` to PATH
+5. Run a quick verification
 
 ### Manual Installation
 
-If you prefer to install manually:
-
 ```bash
-# Clone repository
 git clone https://github.com/tribixbite/bun-on-termux.git
 cd bun-on-termux
 
+# Build C components
+make all
+
 # Create directories
-mkdir -p ~/.bun/bin
+mkdir -p ~/.bun/{bin,lib,tmp/fake-root}
 
-# Copy binaries and wrappers
-cp binaries/* ~/.bun/bin/
-cp wrappers/bun ~/.bun/bin/
-chmod +x ~/.bun/bin/*
+# Install C components
+cp bun-termux ~/.bun/bin/
+cp bun-shim.so ~/.bun/lib/
+chmod +x ~/.bun/bin/bun-termux
 
-# Copy configuration
-cp config/bunfig.toml ~/
+# Install wrapper and config
+cp wrappers/bun ~/.bun/bin/bun-minimal
+ln -sf bun-minimal ~/.bun/bin/bun
+cp config/bunfig.toml ~/.bun/bin/
+
+# Download bun binary (if not included)
+BUN_VERSION="1.3.10"
+curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-aarch64.zip" \
+  -o ~/.bun/tmp/bun.zip
+unzip -o ~/.bun/tmp/bun.zip -d ~/.bun/tmp/
+cp ~/.bun/tmp/bun-linux-aarch64/bun ~/.bun/bin/buno
+chmod +x ~/.bun/bin/buno
 
 # Add to PATH
 echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 
-# Test installation
+# Verify
 bun --version
 ```
 
 ## Binary Sources
 
-### Option 1: Included Binary (Recommended)
-The repository includes a working ARM64 glibc binary (`buno`) that's compatible with glibc-runner.
+### Included Binary
+The repository includes a working ARM64 glibc binary (`buno`) pre-tested with the C wrapper.
 
-### Option 2: Official Bun Releases
-If you prefer to obtain the binary from official sources:
-
-#### Download Official ARM64 Binary
-```bash
-# Create download directory
-mkdir -p ~/.bun/downloads
-cd ~/.bun/downloads
-
-# Download latest Bun for Linux ARM64
-# Check https://github.com/oven-sh/bun/releases for latest version
-BUN_VERSION="1.3.9"  # Update this to latest version
-wget "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-aarch64.zip"
-
-# Extract binary
-unzip "bun-linux-aarch64.zip"
-cd "bun-linux-aarch64"
-
-# Copy binary to our setup
-cp bun ~/.bun/bin/buno
-chmod +x ~/.bun/bin/buno
-
-# Test compatibility with glibc-runner
-grun ~/.bun/bin/buno --version
-```
-
-#### Automated Download Script
-```bash
-# Get latest release automatically
-LATEST_URL=$(curl -s https://api.github.com/repos/oven-sh/bun/releases/latest | grep "browser_download_url.*bun-linux-aarch64.zip" | cut -d '"' -f 4)
-
-# Download and install
-mkdir -p ~/.bun/downloads
-cd ~/.bun/downloads
-wget "$LATEST_URL" -O bun-latest-aarch64.zip
-unzip -o bun-latest-aarch64.zip
-cd bun-linux-aarch64
-cp bun ~/.bun/bin/buno
-chmod +x ~/.bun/bin/buno
-
-# Verify
-grun ~/.bun/bin/buno --version
-```
-
-#### Verify Binary Compatibility
-After downloading an official binary, test it:
+### Official Releases
+Download from [oven-sh/bun releases](https://github.com/oven-sh/bun/releases):
 
 ```bash
-# Test basic execution
-grun ~/.bun/bin/buno --version
-
-# Test with wrapper
-bun --version
-
-# Test package operations (might need copyfile backend)
-echo '{}' > test-package.json
-grun ~/.bun/bin/buno add lodash --backend=copyfile
+bash scripts/download-official-bun.sh 1.3.10
 ```
 
-**Note**: Official binaries may have different compatibility characteristics. The included binary is pre-tested for Termux/glibc-runner compatibility.
-
-### Option 3: Building from Source (Advanced)
-If you want to build Bun from source:
-
-```bash
-# This is complex and requires significant resources
-# See: https://github.com/oven-sh/bun/blob/main/docs/building.md
-
-# Prerequisites for building:
-pacman -S cmake ninja clang llvm git nodejs-lts
-
-# Clone Bun source
-git clone https://github.com/oven-sh/bun.git
-cd bun
-
-# Install dependencies
-npm install
-
-# Configure for cross-compilation (experimental)
-# Note: Building on Termux directly is not officially supported
-make setup
-make dev
-
-# The resulting binary will need glibc-runner compatibility testing
-```
-
-**Warning**: Building from source is complex, resource-intensive, and may not work reliably on Termux. Cross-compilation from a desktop Linux system is recommended if you need a custom build.
+Always use `bun-linux-aarch64.zip` (glibc variant), **not** musl.
 
 ## Post-Installation
 
-### Configuration
+### Verify
 ```bash
-# Copy global configuration (optional)
-cp config/bunfig-global.toml ~/.bun/bunfig.toml
+bun --version                    # Should show version
+bun -e 'console.log("works")'   # Should print "works"
+bun -e 'console.log(Object.keys(process.env).length)'  # Should show 90+
 ```
 
-### Test Installation
+### Run Tests
 ```bash
-# Run comprehensive tests
-./test-bun-comprehensive.sh
-
-# Quick functionality test
-cd examples/basic-project
-bun install
-bun run dev
+bash tests/run-tests.sh
 ```
 
 ### Troubleshooting
-If installation fails:
+See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for common issues.
 
-1. **Check architecture**: `uname -m` should show `aarch64`
-2. **Verify pacman**: `pacman --version` should work
-3. **Check grun**: `grun --version` should work
-4. **Review logs**: Check error messages carefully
-5. **See troubleshooting guide**: `docs/TROUBLESHOOTING.md`
-
-## Alternative Installation Methods
-
-### From Release
-Download from GitHub releases instead of cloning:
+## Upgrading Bun
 
 ```bash
-# Download latest release
-wget https://github.com/tribixbite/bun-on-termux/archive/refs/heads/main.zip
-unzip main.zip
-cd bun-on-termux-main
-./setup.sh
-```
-
-### Manual Binary Installation
-If you only need the wrapper and binary:
-
-```bash
-# Create directories
-mkdir -p ~/.bun/bin
-
-# Download and install binary (if you have a compatible one)
-# Place your ARM64 glibc bun binary as ~/.bun/bin/buno
-
-# Download wrapper
-wget https://raw.githubusercontent.com/tribixbite/bun-on-termux/main/wrappers/bun
-chmod +x bun
-mv bun ~/.bun/bin/
-
-# Add to PATH
-echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
+bash scripts/download-official-bun.sh <version>
+# or manually:
+cp ~/.bun/bin/buno ~/.bun/bin/buno.$(bun --version).bak
+# download new binary, copy to ~/.bun/bin/buno
 ```
 
 ## Uninstallation
 
-To completely remove Bun on Termux:
-
 ```bash
-# Remove Bun files
 rm -rf ~/.bun/
-
-# Remove configuration
-rm -f ~/bunfig.toml
-
-# Remove from PATH (edit ~/.bashrc and remove the PATH line)
-nano ~/.bashrc
-
-# Remove glibc-runner (optional)
-pacman -R glibc-runner
+# Remove PATH line from ~/.bashrc
 ```
-
-## Next Steps
-
-After installation:
-1. Read the main README.md for usage examples
-2. Try the example project in `examples/basic-project/`
-3. Run the test suite to verify functionality
-4. See `docs/TROUBLESHOOTING.md` for common issues

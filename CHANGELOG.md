@@ -1,41 +1,61 @@
 # Changelog
 
+## 2026-03-11
+
+### Major Architecture: C Wrapper + LD_PRELOAD Shim
+
+Replaced `grun` (glibc-runner) with a custom C userland exec wrapper + LD_PRELOAD shim.
+This eliminates the env-preload.js hack, the safe-CWD hack, and the --backend=copyfile requirement.
+
+### Added
+- **`bun-termux` (C wrapper)**: Loads glibc's `ld-linux-aarch64.so.1` via userland exec, passes env vars natively through the constructed stack. Replaces `grun` entirely.
+- **`bun-shim.so` (LD_PRELOAD shim)**: Intercepts filesystem syscalls:
+  - `openat`/`open`: Redirect `/proc/stat` (fake CPU info for `os.cpus()`), redirect restricted directory reads to safe dir
+  - `stat`/`lstat`/`fstatat`: Synthesize directory stats for restricted paths
+  - `access`/`faccessat`: Intercept permission checks on restricted paths
+  - `execve`: Parse shebangs, translate `/usr/bin` -> `$PREFIX/bin`
+  - `link`/`linkat`: Fall back to file copy when hardlinks fail (Android f2fs)
+- **Modular test suite**: 80 tests across 18 categories (A-R), replacing old monolithic script
+- **Create template tests**: `bun init`, `bun init --react`, `bunx create-vite`, `bunx create-astro`
+- **Makefile**: Build system for C components (`make all`, `make install`)
+
+### Upgraded
+- Bun binary from v1.3.9 to **v1.3.10** (`bun-linux-aarch64` glibc variant)
+
+### Removed
+- `env-preload.js` as default preload (C wrapper passes env vars natively)
+- Safe CWD hack (`cd ~/.bun/tmp`) — shim handles directory access
+- `test-bun-comprehensive.sh` (replaced by `tests/run-tests.sh`)
+
+### Fixed
+- **`bun init` / `bun create`**: `--config=` flag was breaking `bun init` (bun misinterprets command name as folder). Wrapper now skips `--config` for init/create.
+- **`bunfig.toml` backend key**: Discovered `backend = "copyfile"` is NOT a valid bunfig key (CLI-only flag). Removed from config. Shim's link/linkat interception makes it unnecessary.
+- **`bun build --compile`**: Now produces working binaries (shim handles directory traversal)
+- **`os.cpus()`**: Now returns proper CPU info (shim spoofs `/proc/stat`)
+
 ## 2026-03-04
 
 ### Fixed
-- **`bun install` / `bun add` CWD mismatch**: The wrapper's `cd ~/.bun/tmp` caused bun to look for `package.json` in the wrong directory. Now auto-injects `--cwd "$_ORIG_CWD"` for all package management commands (install, add, remove, update). No more manual `--cwd` workaround needed.
-- **Hardlink EACCES on all installs**: Previously only global installs got `--backend=copyfile`. Now all package management commands get it automatically, since Android f2fs blocks hardlinks regardless of scope.
-- **`node_modules/.bin` not in PATH**: Shell scripts in `package.json` couldn't find locally-installed binaries. Wrapper now adds `node_modules/.bin` to PATH before executing shell scripts (matching npm/bun native behavior).
+- **`bun install` CWD mismatch**: Auto-injects `--cwd "$_ORIG_CWD"` for all package management commands
+- **Hardlink EACCES on all installs**: All package management commands get `--backend=copyfile` automatically
+- **`node_modules/.bin` not in PATH**: Wrapper adds to PATH before shell scripts
 
 ## 2025-02-15
 
 ### Upgraded
 - Bun binary from v1.2.20 to v1.3.9 (`bun-linux-aarch64` glibc variant)
-- SHA256 verified against official GitHub release
 
 ### Fixed
-- **Environment variables**: Solved the root cause — glibc's `ld.so` zeroes C `environ` when invoked as a program loader. Added `env-preload.js` that reads `/proc/self/environ` and populates `process.env` via `--preload` flag
-- **`bun run` script handling**: Fixed `shift 2` (was `shift 1`, leaving script name as extra arg), added `eval` for shell expansion in package.json scripts, proper routing for nested `bun run` calls
-- **CouldntReadCurrentDirectory**: Wrapper now `cd`s to `~/.bun/tmp` before exec and converts all args to absolute paths
-- **`--config` syntax**: Changed from `--config <path>` (consumed next arg) to `--config=<path>`
-- **stderr noise**: Added `2> >(grep -v "Cannot read directory" >&2)` to filter non-fatal glibc path traversal warnings
+- **Environment variables**: Added `env-preload.js` to read `/proc/self/environ` (glibc's ld.so zeroes C environ)
+- **`bun run` script handling**: Fixed shift logic, added eval for shell expansion
+- **CouldntReadCurrentDirectory**: Wrapper cd's to `~/.bun/tmp` before exec (later replaced by shim)
 
 ### Added
-- `env-preload.js` — preload script that bridges `/proc/self/environ` to `process.env`
-- `bunfig.toml` — global config with `backend=copyfile`, preload, and Termux-optimized defaults
-- Rewritten `bun-minimal` wrapper with safe CWD, absolute path resolution, command routing
-- Comprehensive README with technical explanation, benchmarks, and limitations
-
-### Architecture
-- Confirmed binary is `bun-linux-aarch64` (glibc), not musl as previously assumed
-- Documented why patchelf approach fails (libc.so linker script, LD_PRELOAD bionic/glibc conflict)
-- Documented bunfig.toml preload chicken-and-egg problem (bun needs env vars to find config)
+- `env-preload.js`, `bunfig.toml`, rewritten wrapper with safe CWD
 
 ## 2025-08 (Initial)
 
 ### Added
-- Initial setup with glibc-runner integration
-- Basic wrapper script for `bun run` and package management
-- bunx wrapper for package execution
-- Test suite (`test-bun-comprehensive.sh`)
-- Documentation for architecture, installation, troubleshooting, binary patching
+- Initial setup with glibc-runner (grun) integration
+- Basic wrapper script, bunx wrapper, test suite
+- Documentation for architecture, installation, troubleshooting

@@ -166,10 +166,10 @@ bun-on-termux/
     shim.c        <- LD_PRELOAD shim
   wrappers/
     bun           <- main wrapper script
-    bunx          <- bunx wrapper
+    bunx          <- bunx wrapper (legacy, `bun x` preferred)
     env-preload.js <- legacy preload (kept as fallback)
   tests/
-    run-tests.sh  <- test runner (76 tests)
+    run-tests.sh  <- test runner (80 tests)
     lib/          <- shared test helpers
     fixtures/     <- test fixture files
   config/
@@ -207,6 +207,7 @@ Use `bun-linux-aarch64.zip` (glibc variant), not musl.
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Installation](docs/INSTALLATION.md)
 - [Binary Compatibility](docs/BINARY-COMPATIBILITY.md)
+- [Termux Config](docs/TERMUX_CONFIG.md)
 
 ## License
 
