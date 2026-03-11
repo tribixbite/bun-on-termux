@@ -1,15 +1,12 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# Enhanced Bun wrapper for Termux with glibc-runner
-# Fixes: env var passing (via /proc/self/environ preload), bun run script
-# handling, and CouldntReadCurrentDirectory by using a safe CWD.
+# Bun wrapper for Termux with C userland exec backend
+# Handles: argument routing, --cwd injection, package.json script parsing,
+# and stderr filtering. The C wrapper (bun-termux) handles env vars, shim
+# preloading, and ld.so invocation natively.
 
-_BUN="$HOME/.bun/bin/buno"
-_PRELOAD="$HOME/.bun/bin/env-preload.js"
+_BUNX="$HOME/.bun/bin/bun-termux"
 _BUNFIG="--config=$HOME/.bun/bin/bunfig.toml"
-_SAFE_DIR="$HOME/.bun/tmp"
 _ORIG_CWD="$(pwd)"
-
-mkdir -p "$_SAFE_DIR" 2>/dev/null
 
 # Convert a potentially relative path to absolute using original CWD
 _abs_path() {
@@ -33,26 +30,22 @@ _resolve_args() {
     done
 }
 
-# Run buno via grun from safe CWD with env preload for JS execution
-# Filters the non-fatal "Cannot read directory" noise from stderr
+# Run buno via C wrapper for JS execution
 _bun_js() {
     _resolve_args "$@"
-    cd "$_SAFE_DIR" 2>/dev/null
-    exec grun "$_BUN" --preload "$_PRELOAD" "$_BUNFIG" "${_ABS_ARGS[@]}" 2> >(grep -v "Cannot read directory" >&2)
+    exec "$_BUNX" "$_BUNFIG" "${_ABS_ARGS[@]}" 2> >(grep -v "Cannot read directory" >&2)
 }
 
-# Run buno via grun from safe CWD for non-JS commands (install, etc.)
+# Run buno via C wrapper for non-JS commands (install, etc.)
 _bun_cmd() {
     _resolve_args "$@"
-    cd "$_SAFE_DIR" 2>/dev/null
-    exec grun "$_BUN" "$_BUNFIG" "${_ABS_ARGS[@]}" 2> >(grep -v "Cannot read directory" >&2)
+    exec "$_BUNX" "$_BUNFIG" "${_ABS_ARGS[@]}" 2> >(grep -v "Cannot read directory" >&2)
 }
 
-# --- Passthrough flags that don't need preload or config ---
+# --- Passthrough flags that don't need config ---
 case "$1" in
     --version|--revision|--help|-h)
-        cd "$_SAFE_DIR" 2>/dev/null
-        exec grun "$_BUN" "$1"
+        exec "$_BUNX" "$1"
         ;;
 esac
 
@@ -75,7 +68,7 @@ if [ "$1" = "run" ] && [ -n "$2" ]; then
         if [ -n "$script_command" ]; then
             shift 2  # Remove "run" and script name, keep extra args
 
-            # Script invokes bun: route through wrapper to get env + safe CWD
+            # Script invokes bun: route through wrapper
             if echo "$script_command" | grep -q "^bun run "; then
                 script_file="$(_abs_path "${script_command#bun run }")"
                 _bun_js "$script_file" "$@"
@@ -106,10 +99,10 @@ if [ -n "$1" ] && [ "${1#-}" = "$1" ]; then
     fi
 fi
 
-# --- Commands that execute JS and need env preload ---
+# --- Commands that execute JS ---
 case "$1" in
     test|eval|repl|build) _bun_js "$@" ;;
-    -e) _bun_js "$@" ;;
+    -e|-p|--eval|--print) _bun_js "$@" ;;
 esac
 
 # --- bunx / bun x ---
@@ -119,8 +112,7 @@ if [ "$1" = "x" ]; then
 fi
 
 # --- Package management (install, add, remove, update) ---
-# Must pass --cwd since _bun_cmd cd's to _SAFE_DIR, and --backend=copyfile
-# because Android f2fs blocks hardlinks (EACCES).
+# Must pass --cwd and --backend=copyfile because Android f2fs blocks hardlinks.
 if [ "$1" = "install" ] || [ "$1" = "i" ] || [ "$1" = "add" ] || [ "$1" = "remove" ] || [ "$1" = "rm" ] || [ "$1" = "update" ]; then
     has_global=false
     has_backend=false
@@ -142,5 +134,5 @@ if [ "$1" = "install" ] || [ "$1" = "i" ] || [ "$1" = "add" ] || [ "$1" = "remov
     _bun_cmd "$@" "${_extra_args[@]}"
 fi
 
-# --- Default: pass through with env preload ---
+# --- Default: pass through ---
 _bun_js "$@"
