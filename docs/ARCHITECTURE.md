@@ -123,9 +123,10 @@ Named `buno` ("bun original") so the wrapper script can use the standard `bun` c
 **Location**: `~/.bun/bin/bunfig.toml` (referenced via `--config=` flag)
 
 Key settings:
-- `[install] backend = "copyfile"` — hardlinks blocked on Android f2fs
-- `[install] auto = false` — disable lifecycle scripts that may fail
+- `[install] exact = true` — exact version pinning
 - `[run] shell = "system"` — use Termux's native shell
+
+Note: `backend = "copyfile"` is a CLI-only flag (`--backend=copyfile`), not a valid bunfig.toml key. The bash wrapper injects it for package management commands. The shim's link/linkat interception also provides automatic fallback.
 
 ## Execution flows
 
@@ -178,6 +179,13 @@ Key settings:
 - No binary patching or ELF modification performed
 - `BUN_FAKE_ROOT` is a user-owned temp directory
 - Environment variables passed natively (no `/proc/self/environ` parsing)
+
+## Related projects
+
+This project's C wrapper and shim are adapted from two reference implementations. See [COMPARISON.md](COMPARISON.md) for a detailed feature comparison.
+
+- [Happ1ness-dev/bun-termux](https://github.com/Happ1ness-dev/bun-termux) — minimal C wrapper + shim (openat, execve)
+- [kaan-escober/bun-termux-loader](https://github.com/kaan-escober/bun-termux-loader) — self-contained embedded binary approach
 
 ## Legacy: env-preload.js
 

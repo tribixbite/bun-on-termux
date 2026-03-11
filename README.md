@@ -122,6 +122,30 @@ bun --version
 - **Platform detection**: Bun reports `linux-arm64` instead of `android-arm64`. Optional native binaries like `@rollup/rollup-android-arm64` must be installed via `npm install` if needed.
 - **bash wrapper overhead**: Package.json parsing adds ~50-150ms startup overhead from fork/exec. Future v2 may port argument routing to C.
 
+## Comparison with other Termux Bun projects
+
+This project builds on techniques from two reference implementations. See [docs/COMPARISON.md](docs/COMPARISON.md) for full details.
+
+|  | **bun-on-termux** | **bun-termux** | **bun-termux-loader** |
+|--|-------------------|----------------|----------------------|
+| **Repo** | [tribixbite/bun-on-termux](https://github.com/tribixbite/bun-on-termux) | [Happ1ness-dev/bun-termux](https://github.com/Happ1ness-dev/bun-termux) | [kaan-escober/bun-termux-loader](https://github.com/kaan-escober/bun-termux-loader) |
+| **Approach** | Bash wrapper + C wrapper + shim | C wrapper + shim | Embedded binary + shim |
+| **Bun binary** | External (`buno`) | External (`buno`) | Embedded (~92MB self-contained) |
+| **Userland exec** | Yes | Yes | Yes |
+| **`/proc/self/exe`** | Preserved | Preserved | Preserved |
+| **Shim syscalls** | openat, stat, access, execve, link | openat, execve | dlopen |
+| **`os.cpus()`** | Works (shim spoofs `/proc/stat`) | Works (shim spoofs `/proc/stat`) | N/A |
+| **`fs.existsSync('/')`** | Works (stat interception) | Errors | Errors |
+| **Hardlink fallback** | Auto copy via link/linkat shim | Manual `--backend=copyfile` | Manual `--backend=copyfile` |
+| **Shebang translation** | Auto (`/usr/bin` -> `$PREFIX/bin`) | Auto (`/usr/bin` -> `$PREFIX/bin`) | None |
+| **Bash wrapper** | Yes (arg routing, pkg.json, --cwd) | None | None |
+| **`bun run <script>`** | Parses package.json | Passthrough to bun | N/A |
+| **`bun install`** | Auto --cwd + --backend | Manual flags needed | N/A |
+| **`bun init` / `bun create`** | Works (shim + wrapper) | Manual workarounds | N/A |
+| **Compiled binaries** | Works (same device) | Works + replace_runtime.py | Works (self-contained) |
+| **Test suite** | 80 tests, 18 categories | 8 tests | None |
+| **Build tool** | Makefile (clang) | Makefile (clang) | Makefile + Python |
+
 ## Test suite
 
 Run the comprehensive test suite (80 tests across 18 categories):
@@ -204,6 +228,7 @@ Use `bun-linux-aarch64.zip` (glibc variant), not musl.
 ## Docs
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [Comparison](docs/COMPARISON.md) — feature comparison with other Termux Bun projects
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Installation](docs/INSTALLATION.md)
 - [Binary Compatibility](docs/BINARY-COMPATIBILITY.md)
