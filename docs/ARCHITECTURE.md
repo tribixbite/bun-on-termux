@@ -100,6 +100,7 @@ The shim is preloaded by ld.so (via `--preload` flag) and intercepts filesystem 
 | `stat`/`lstat`/`fstatat`/`__xstat`/`__lxstat` | Synthesize directory stat results for restricted paths (fixes `fs.existsSync('/')`, `fs.statSync('/')`) |
 | `access`/`faccessat` | Intercept permission checks on restricted paths (fixes `fs.accessSync`) |
 | `execve` | Parse shebangs and translate FHS paths (`/usr/bin/env`, `/bin/sh`) to `$PREFIX/bin` equivalents |
+| `link`/`linkat` | Fall back to file copy when hardlinks fail with EACCES/EPERM (Android f2fs blocks hardlinks; fixes `bun install`, `bun init`, `bun create`) |
 
 **Fake /proc/stat**: Android restricts access to `/proc/stat`. The shim generates a synthetic file with per-CPU lines based on `sysconf(_SC_NPROCESSORS_ONLN)`. Uses `memfd_create` (kernel >= 3.17) with temp file fallback.
 

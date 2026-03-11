@@ -381,6 +381,128 @@ int faccessat(int dirfd, const char *pathname, int mode, int flags) {
     return syscall(SYS_faccessat, dirfd, pathname, mode, flags);
 }
 
+/* --- link/linkat interception: fallback to copy on EACCES/EPERM/EXDEV --- */
+/* Android f2fs blocks hardlinks; bun install uses link() by default.
+ * Intercept and fall back to copying the file instead. */
+
+static int (*real_link)(const char *, const char *) = NULL;
+static int (*real_linkat)(int, const char *, int, const char *, int) = NULL;
+
+static int copy_file(const char *src, const char *dst) {
+    int src_fd = real_openat(AT_FDCWD, src, O_RDONLY | O_CLOEXEC, 0);
+    if (src_fd < 0) return -1;
+
+    struct stat st;
+    if (fstat(src_fd, &st) < 0) {
+        close(src_fd);
+        return -1;
+    }
+
+    int dst_fd = real_openat(AT_FDCWD, dst,
+                             O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC,
+                             st.st_mode & 07777);
+    if (dst_fd < 0) {
+        close(src_fd);
+        return -1;
+    }
+
+    /* Use sendfile for efficient kernel-space copy */
+    off_t offset = 0;
+    ssize_t remaining = st.st_size;
+    while (remaining > 0) {
+        ssize_t sent = syscall(SYS_sendfile, dst_fd, src_fd, &offset, remaining);
+        if (sent <= 0) {
+            /* sendfile failed — fall back to read/write loop */
+            char buf[65536];
+            lseek(src_fd, offset, SEEK_SET);
+            while ((sent = read(src_fd, buf, sizeof(buf))) > 0) {
+                ssize_t w = 0;
+                while (w < sent) {
+                    ssize_t n = write(dst_fd, buf + w, sent - w);
+                    if (n < 0) {
+                        close(src_fd);
+                        close(dst_fd);
+                        unlink(dst);
+                        return -1;
+                    }
+                    w += n;
+                }
+            }
+            break;
+        }
+        remaining -= sent;
+    }
+
+    close(src_fd);
+    close(dst_fd);
+    return 0;
+}
+
+int link(const char *oldpath, const char *newpath) {
+    if (!real_link) real_link = dlsym(RTLD_NEXT, "link");
+    int ret = real_link(oldpath, newpath);
+    if (ret == 0) return 0;
+
+    /* If hardlink fails with EACCES, EPERM, or EXDEV, fall back to copy */
+    int e = errno;
+    if (e == EACCES || e == EPERM || e == EXDEV || e == ENOSYS) {
+        return copy_file(oldpath, newpath);
+    }
+    errno = e;
+    return ret;
+}
+
+int linkat(int olddirfd, const char *oldpath, int newdirfd,
+           const char *newpath, int flags) {
+    if (!real_linkat) real_linkat = dlsym(RTLD_NEXT, "linkat");
+    int ret = real_linkat(olddirfd, oldpath, newdirfd, newpath, flags);
+    if (ret == 0) return 0;
+
+    /* If hardlink fails, fall back to copy (only for AT_FDCWD simple paths) */
+    int e = errno;
+    if (e == EACCES || e == EPERM || e == EXDEV || e == ENOSYS) {
+        /* For non-AT_FDCWD dirfds, construct absolute paths if possible */
+        char src_buf[4096], dst_buf[4096];
+        const char *src = oldpath;
+        const char *dst = newpath;
+
+        if (olddirfd != AT_FDCWD && oldpath[0] != '/') {
+            /* Resolve via /proc/self/fd */
+            char fd_path[64];
+            snprintf(fd_path, sizeof(fd_path), "/proc/self/fd/%d", olddirfd);
+            ssize_t n = readlink(fd_path, src_buf, sizeof(src_buf) - 1);
+            if (n > 0) {
+                src_buf[n] = '\0';
+                size_t plen = strlen(src_buf);
+                snprintf(src_buf + plen, sizeof(src_buf) - plen, "/%s", oldpath);
+                src = src_buf;
+            } else {
+                errno = e;
+                return ret;
+            }
+        }
+
+        if (newdirfd != AT_FDCWD && newpath[0] != '/') {
+            char fd_path[64];
+            snprintf(fd_path, sizeof(fd_path), "/proc/self/fd/%d", newdirfd);
+            ssize_t n = readlink(fd_path, dst_buf, sizeof(dst_buf) - 1);
+            if (n > 0) {
+                dst_buf[n] = '\0';
+                size_t plen = strlen(dst_buf);
+                snprintf(dst_buf + plen, sizeof(dst_buf) - plen, "/%s", newpath);
+                dst = dst_buf;
+            } else {
+                errno = e;
+                return ret;
+            }
+        }
+
+        return copy_file(src, dst);
+    }
+    errno = e;
+    return ret;
+}
+
 /* --- Shebang parsing for execve --- */
 static int parse_shebang(const char *path, char *interp, size_t interp_size,
                          char *interp_arg, size_t arg_size) {

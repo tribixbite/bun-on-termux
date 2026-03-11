@@ -38,6 +38,7 @@ bun (bash wrapper) -> bun-termux (C) -> ld.so -> bun-shim.so -> buno (real binar
 | `stat`/`lstat`/`fstatat` | Synthesize directory stats for restricted paths (`fs.existsSync`, `fs.statSync`) |
 | `access`/`faccessat` | Intercept permission checks on restricted paths |
 | `execve` | Parse shebangs, translate `/usr/bin` -> `$PREFIX/bin` |
+| `link`/`linkat` | Fall back to copy when hardlinks fail (Android f2fs) |
 
 ## Quick start
 
@@ -111,6 +112,8 @@ bun --version
 | `bun:sqlite` | works | Native SQLite binding |
 | Workers | works | `new Worker()` threads |
 | `Bun.spawn()` | works | Child process execution |
+| `bun init` | works | Blank + React project templates |
+| `bun create` | works | Vite, Astro templates via bunx |
 
 ## Known limitations
 
@@ -121,7 +124,7 @@ bun --version
 
 ## Test suite
 
-Run the comprehensive test suite (76 tests across 18 categories):
+Run the comprehensive test suite (80 tests across 18 categories):
 
 ```bash
 bash tests/run-tests.sh

@@ -3,7 +3,7 @@
 # Usage: bash tests/run-tests.sh [--filter <pattern>] [--category <A-R>]
 #
 # Categories: A=CLI, B=FileExec, C=Eval, D=REPL, E=TestRunner, F=Build,
-#   G=PkgMgmt, H=Scripts, I=Bunx, J=Create, K=BunAPIs, L=EnvVars,
+#   G=PkgMgmt, H=Scripts, I=Bunx, J=Create/Templates, K=BunAPIs, L=EnvVars,
 #   M=LowLevel, N=DevServer, O=Network, P=Workers, Q=FFI, R=Stress
 
 set -o pipefail
@@ -253,6 +253,30 @@ test_j_create() {
     section "J. Create / Templates"
     run_test "bun create --help" \
         "bun create --help 2>&1 | head -5" "any" 10
+
+    # bun init — creates a blank TS project in current dir
+    local init_dir="$TEST_TMP/test-init"
+    rm -rf "$init_dir" && mkdir -p "$init_dir"
+    run_test "bun init -y (blank project)" \
+        "cd $init_dir && echo | bun init -y >/dev/null 2>&1 && test -f index.ts && bun run index.ts 2>&1 | grep -q 'Hello'" 0 30
+
+    # bun init --react — creates a React project
+    local react_dir="$TEST_TMP/test-react"
+    rm -rf "$react_dir" && mkdir -p "$react_dir"
+    run_test "bun init --react" \
+        "cd $react_dir && echo | bun init --react >/dev/null 2>&1 && test -f src/App.tsx && test -d node_modules/react" 0 45
+
+    # bunx create-vite — Vite vanilla template
+    local vite_dir="$TEST_TMP/test-vite"
+    rm -rf "$vite_dir"
+    run_test "bunx create-vite (vanilla)" \
+        "cd $TEST_TMP && bunx create-vite test-vite --template vanilla >/dev/null 2>&1 && test -f $vite_dir/index.html" 0 60
+
+    # bunx create-astro — Astro basics template
+    local astro_dir="$TEST_TMP/test-astro"
+    rm -rf "$astro_dir"
+    run_test "bunx create-astro (basics)" \
+        "cd $TEST_TMP && bunx create-astro test-astro -- --template basics --no-install --no-git --skip-houston >/dev/null 2>&1 && test -d $astro_dir/src" 0 60
 }
 
 # =========================================================================

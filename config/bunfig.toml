@@ -1,50 +1,17 @@
 # Global Bun Configuration for Termux
-# Optimized for Android/Termux environment with glibc-runner integration
+# C wrapper handles env vars natively; no preload needed.
 
 [install]
-# Use copyfile backend by default for Termux compatibility
-backend = "copyfile"
 # Exact versions to avoid dependency conflicts
 exact = true
+# NOTE: backend = "copyfile" is NOT a valid bunfig key (CLI-only flag).
+# The shim intercepts link/linkat to handle this automatically.
 # Registry configuration
 registry = "https://registry.npmjs.org"
-# Disable automatic scripts that may fail on Termux
-auto = false
-# Production optimizations
-production = false
-# Optional dependencies (can be problematic on Termux)
-# optional = true
-# Peer dependencies handling
-peer = false
-# Development dependencies in development mode
-dev = true
 
 [install.cache]
-# the directory to use for the cache
 dir = "~/.bun/install/cache"
 
 [run]
-# Shell to use for script execution
+# Use Termux's native shell for script execution
 shell = "system"
-# Working directory behavior
-cwd = "."
-# Silent mode for cleaner output
-silent = false
-# Preload env-fix for glibc-runner (ld.so strips environ, this restores it)
-preload = ["/data/data/com.termux/files/home/.bun/bin/env-preload.js"]
-
-[test]
-# Test runner configuration
-coverage = false
-# Timeout for tests (Termux can be slower)
-timeout = 30000
-
-[build]
-# Build optimizations for Termux
-target = "bun"
-# Output directory
-outdir = "./dist"
-# Minification (can be slow on mobile)
-minify = false
-# Source maps for debugging
-sourcemap = "external"
