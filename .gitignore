@@ -15,6 +15,7 @@ temp-*
 # Build artifacts
 bun-termux
 bun-shim.so
+site/dist/
 
 # Test outputs
 bun-test-*/

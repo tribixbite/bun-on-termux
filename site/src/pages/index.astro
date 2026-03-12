@@ -1,0 +1,242 @@
+---
+import Base from '../layouts/Base.astro';
+import ArchDiagram from '../components/ArchDiagram.astro';
+import CodeBlock from '../components/CodeBlock.svelte';
+
+const description = 'Run Bun natively on Android via Termux using a C userland exec wrapper + LD_PRELOAD shim. No proot, no chroot, no root.';
+
+const quickInstallTabs = [
+  {
+    label: 'Quick',
+    code: `git clone https://github.com/tribixbite/bun-on-termux.git
+cd bun-on-termux
+make install
+chmod +x setup.sh && ./setup.sh
+bun --version`,
+  },
+  {
+    label: 'Manual',
+    code: `# Prerequisites: termux-pacman, glibc-runner, clang
+pacman -S glibc-runner
+pkg install clang
+
+# Clone and build
+git clone https://github.com/tribixbite/bun-on-termux.git
+cd bun-on-termux
+make all
+
+# Install
+mkdir -p ~/.bun/{bin,lib,tmp/fake-root}
+cp bun-termux ~/.bun/bin/
+cp bun-shim.so ~/.bun/lib/
+cp wrappers/bun ~/.bun/bin/bun-minimal
+ln -sf bun-minimal ~/.bun/bin/bun
+cp config/bunfig.toml ~/.bun/bin/
+
+# Download bun v1.3.10
+bash scripts/download-official-bun.sh 1.3.10
+
+# Add to PATH
+echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc && bun --version`,
+  },
+];
+
+/** Trimmed comparison data — most differentiating rows */
+const comparisonRows = [
+  { label: 'Approach', ours: 'Bash + C wrapper + shim', theirs1: 'C wrapper + shim', theirs2: 'Embedded binary + shim' },
+  { label: 'Shim syscalls', ours: 'openat, stat, access, execve, link', theirs1: 'openat, execve', theirs2: 'dlopen' },
+  { label: 'Hardlink fallback', ours: 'Auto (shim copy)', theirs1: 'Manual flag', theirs2: 'Manual flag' },
+  { label: 'bun install', ours: 'Auto --cwd + --backend', theirs1: 'Manual flags', theirs2: 'N/A' },
+  { label: 'bun init / create', ours: 'Works', theirs1: 'Manual workarounds', theirs2: 'N/A' },
+  { label: 'Compiled size', ours: '~14KB', theirs1: '~100MB', theirs2: '~92MB' },
+  { label: 'Test suite', ours: '80 tests, 18 categories', theirs1: '8 tests', theirs2: 'None' },
+];
+
+const features = [
+  {
+    title: 'Zero-Config Installs',
+    desc: 'Wrapper auto-injects --cwd and --backend=copyfile. Shim intercepts link/linkat for automatic hardlink-to-copy fallback on Android f2fs.',
+    icon: '⚡',
+    color: 'text-amber-400',
+  },
+  {
+    title: '14KB Compiled Binaries',
+    desc: 'bun build --compile output embeds the 14KB wrapper, not the 100MB runtime. Runs on any Termux + glibc-runner device.',
+    icon: '📦',
+    color: 'text-sky-400',
+  },
+  {
+    title: 'Deep Shim Coverage',
+    desc: 'Intercepts openat, stat, access, execve, and link at the glibc level. Spoofs /proc/stat for os.cpus(), translates shebangs automatically.',
+    icon: '🔧',
+    color: 'text-emerald-400',
+  },
+  {
+    title: '80 Tests, 18 Categories',
+    desc: 'CLI, file exec, eval, REPL, test runner, build, package management, scripts, bunx, create, APIs, env vars, network, workers, FFI, and more.',
+    icon: '✓',
+    color: 'text-purple-400',
+  },
+];
+---
+
+<Base title="Bun on Termux" description={description}>
+  <main class="max-w-5xl mx-auto px-4 sm:px-6">
+
+    <!-- ═══ HERO ═══ -->
+    <section class="pt-16 pb-12 sm:pt-24 sm:pb-16 text-center">
+      <!-- Stat badges -->
+      <div class="flex flex-wrap justify-center gap-3 mb-8">
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono bg-slate-800 border border-slate-700 text-emerald-400">
+          79/80 tests pass
+        </span>
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono bg-slate-800 border border-slate-700 text-sky-400">
+          v1.3.10
+        </span>
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono bg-slate-800 border border-slate-700 text-amber-400">
+          ARM64 / aarch64
+        </span>
+      </div>
+
+      <h1 class="text-4xl sm:text-5xl font-bold font-mono tracking-tight text-slate-200 mb-4">
+        <span class="glow-amber text-amber-400">Bun</span> on Termux
+      </h1>
+      <p class="text-lg sm:text-xl text-slate-400 max-w-2xl mx-auto mb-8">
+        Run <a href="https://bun.sh" class="text-amber-400 hover:underline">Bun</a> natively on Android via
+        <a href="https://termux.dev" class="text-amber-400 hover:underline">Termux</a> using a C userland exec wrapper + LD_PRELOAD shim.
+        No proot, no chroot, no root.
+      </p>
+
+      <!-- CTAs -->
+      <div class="flex flex-wrap justify-center gap-4 mb-16">
+        <a
+          href="https://github.com/tribixbite/bun-on-termux"
+          class="inline-flex items-center gap-2 px-6 py-3 bg-amber-400 text-slate-950 font-semibold rounded-lg hover:bg-amber-300 transition-colors"
+        >
+          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+          </svg>
+          GitHub
+        </a>
+        <a
+          href="#quickstart"
+          class="inline-flex items-center gap-2 px-6 py-3 border border-slate-600 text-slate-300 font-semibold rounded-lg hover:border-slate-400 hover:text-white transition-colors"
+        >
+          Get Started
+        </a>
+      </div>
+
+      <!-- Architecture diagram -->
+      <ArchDiagram />
+    </section>
+
+    <!-- ═══ FEATURES ═══ -->
+    <section class="py-12 sm:py-16">
+      <h2 class="text-2xl font-bold font-mono text-slate-200 text-center mb-10">What it handles</h2>
+      <div class="grid sm:grid-cols-2 gap-6">
+        {features.map((f) => (
+          <div class="p-6 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition-colors">
+            <div class={`text-2xl mb-3 ${f.color}`}>{f.icon}</div>
+            <h3 class={`text-lg font-semibold font-mono mb-2 ${f.color}`}>{f.title}</h3>
+            <p class="text-sm text-slate-400 leading-relaxed">{f.desc}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <!-- ═══ QUICK START ═══ -->
+    <section id="quickstart" class="py-12 sm:py-16">
+      <h2 class="text-2xl font-bold font-mono text-slate-200 text-center mb-4">Quick Start</h2>
+      <p class="text-slate-400 text-center mb-8 text-sm">
+        Requires <span class="text-slate-300">Termux</span> (F-Droid/GitHub),
+        <span class="text-slate-300">termux-pacman</span>,
+        <span class="text-slate-300">glibc-runner</span>, and
+        <span class="text-slate-300">clang</span> on an ARM64 device.
+      </p>
+      <div class="max-w-2xl mx-auto">
+        <CodeBlock client:visible tabs={quickInstallTabs} />
+      </div>
+    </section>
+
+    <!-- ═══ COMPARISON ═══ -->
+    <section class="py-12 sm:py-16">
+      <h2 class="text-2xl font-bold font-mono text-slate-200 text-center mb-4">Compared to alternatives</h2>
+      <p class="text-slate-400 text-center mb-8 text-sm">
+        Three projects solve the same problem. Different tradeoffs.
+      </p>
+
+      <!-- Desktop table -->
+      <div class="hidden sm:block overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-700">
+              <th class="text-left py-3 px-4 text-slate-400 font-mono font-normal"></th>
+              <th class="text-left py-3 px-4 text-amber-400 font-mono">bun-on-termux</th>
+              <th class="text-left py-3 px-4 text-slate-400 font-mono">bun-termux</th>
+              <th class="text-left py-3 px-4 text-slate-400 font-mono">bun-termux-loader</th>
+            </tr>
+          </thead>
+          <tbody>
+            {comparisonRows.map((row) => (
+              <tr class="border-b border-slate-800/50">
+                <td class="py-2.5 px-4 text-slate-400 font-mono text-xs">{row.label}</td>
+                <td class="py-2.5 px-4 text-emerald-400 text-xs">{row.ours}</td>
+                <td class="py-2.5 px-4 text-slate-500 text-xs">{row.theirs1}</td>
+                <td class="py-2.5 px-4 text-slate-500 text-xs">{row.theirs2}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Mobile cards -->
+      <div class="sm:hidden space-y-4">
+        {comparisonRows.map((row) => (
+          <div class="p-4 rounded-lg bg-slate-900/60 border border-slate-800">
+            <div class="text-xs font-mono text-slate-400 mb-2">{row.label}</div>
+            <div class="space-y-1 text-xs">
+              <div class="flex justify-between">
+                <span class="text-amber-400 font-mono">bun-on-termux</span>
+                <span class="text-emerald-400">{row.ours}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-500 font-mono">bun-termux</span>
+                <span class="text-slate-500">{row.theirs1}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-500 font-mono">bun-termux-loader</span>
+                <span class="text-slate-500">{row.theirs2}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <p class="text-center mt-6">
+        <a
+          href="https://github.com/tribixbite/bun-on-termux/blob/main/docs/COMPARISON.md"
+          class="text-sm text-slate-400 hover:text-amber-400 transition-colors font-mono"
+        >
+          Full comparison →
+        </a>
+      </p>
+    </section>
+
+    <!-- ═══ FOOTER ═══ -->
+    <footer class="py-12 border-t border-slate-800 text-center text-sm text-slate-500">
+      <p class="mb-3">
+        MIT License · Built with techniques from
+        <a href="https://github.com/Happ1ness-dev/bun-termux" class="text-slate-400 hover:text-amber-400 transition-colors">bun-termux</a>
+        and
+        <a href="https://github.com/kaan-escober/bun-termux-loader" class="text-slate-400 hover:text-amber-400 transition-colors">bun-termux-loader</a>
+      </p>
+      <p>
+        <a href="https://github.com/tribixbite/bun-on-termux" class="text-slate-400 hover:text-amber-400 transition-colors font-mono">
+          github.com/tribixbite/bun-on-termux
+        </a>
+      </p>
+    </footer>
+
+  </main>
+</Base>

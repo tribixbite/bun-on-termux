@@ -1,0 +1,13 @@
+# build output
+dist/
+.astro/
+
+# dependencies
+node_modules/
+
+# Override root bun.lock ignore — needed for CI --frozen-lockfile
+!bun.lock
+
+# environment variables
+.env
+.env.production

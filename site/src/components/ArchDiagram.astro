@@ -1,0 +1,78 @@
+---
+/** SVG architecture diagram showing the 3-layer execution chain */
+---
+
+<div class="w-full max-w-2xl mx-auto">
+  <svg viewBox="0 0 600 400" class="w-full h-auto" xmlns="http://www.w3.org/2000/svg">
+    <!-- Background -->
+    <defs>
+      <linearGradient id="boxGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#1a2235" />
+        <stop offset="100%" stop-color="#0f1624" />
+      </linearGradient>
+      <linearGradient id="arrowGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#fbbf24" />
+        <stop offset="100%" stop-color="#f59e0b" />
+      </linearGradient>
+      <filter id="glow">
+        <feGaussianBlur stdDeviation="2" result="blur" />
+        <feMerge>
+          <feMergeNode in="blur" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
+    </defs>
+
+    <!-- Layer 1: Bash Wrapper -->
+    <rect x="170" y="10" width="260" height="56" rx="8" fill="url(#boxGrad)" stroke="#fbbf24" stroke-width="1.5" />
+    <text x="300" y="33" text-anchor="middle" fill="#fbbf24" font-family="monospace" font-size="13" font-weight="bold">bun</text>
+    <text x="300" y="52" text-anchor="middle" fill="#8899b3" font-family="monospace" font-size="10">bash wrapper — arg routing, pkg.json</text>
+
+    <!-- Arrow 1 -->
+    <line x1="300" y1="66" x2="300" y2="96" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrowHead)" />
+
+    <!-- Layer 2: C Wrapper -->
+    <rect x="170" y="96" width="260" height="56" rx="8" fill="url(#boxGrad)" stroke="#38bdf8" stroke-width="1.5" />
+    <text x="300" y="119" text-anchor="middle" fill="#38bdf8" font-family="monospace" font-size="13" font-weight="bold">bun-termux</text>
+    <text x="300" y="138" text-anchor="middle" fill="#8899b3" font-family="monospace" font-size="10">C wrapper — userland exec, mmap ld.so</text>
+
+    <!-- Arrow 2 -->
+    <line x1="300" y1="152" x2="300" y2="182" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#arrowHead2)" />
+
+    <!-- Layer 3: ld.so + shim -->
+    <rect x="170" y="182" width="260" height="56" rx="8" fill="url(#boxGrad)" stroke="#34d399" stroke-width="1.5" />
+    <text x="300" y="205" text-anchor="middle" fill="#34d399" font-family="monospace" font-size="13" font-weight="bold">ld.so + bun-shim.so</text>
+    <text x="300" y="224" text-anchor="middle" fill="#8899b3" font-family="monospace" font-size="10">LD_PRELOAD — openat, stat, execve, link</text>
+
+    <!-- Arrow 3 -->
+    <line x1="300" y1="238" x2="300" y2="268" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowHead3)" />
+
+    <!-- Layer 4: buno -->
+    <rect x="170" y="268" width="260" height="56" rx="8" fill="url(#boxGrad)" stroke="#a78bfa" stroke-width="1.5" />
+    <text x="300" y="291" text-anchor="middle" fill="#a78bfa" font-family="monospace" font-size="13" font-weight="bold">buno</text>
+    <text x="300" y="310" text-anchor="middle" fill="#8899b3" font-family="monospace" font-size="10">real bun binary (v1.3.10, linux-aarch64)</text>
+
+    <!-- Side annotations -->
+    <text x="450" y="44" fill="#fbbf24" font-family="monospace" font-size="9" opacity="0.7">--cwd, --backend</text>
+    <text x="450" y="130" fill="#38bdf8" font-family="monospace" font-size="9" opacity="0.7">env vars on stack</text>
+    <text x="450" y="216" fill="#34d399" font-family="monospace" font-size="9" opacity="0.7">/proc/stat, shebangs</text>
+    <text x="450" y="302" fill="#a78bfa" font-family="monospace" font-size="9" opacity="0.7">your JS/TS code</text>
+
+    <!-- Arrow markers -->
+    <defs>
+      <marker id="arrowHead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#fbbf24" />
+      </marker>
+      <marker id="arrowHead2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#38bdf8" />
+      </marker>
+      <marker id="arrowHead3" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#34d399" />
+      </marker>
+    </defs>
+
+    <!-- Result arrow -->
+    <line x1="300" y1="324" x2="300" y2="360" stroke="#8899b3" stroke-width="1" stroke-dasharray="4 4" />
+    <text x="300" y="380" text-anchor="middle" fill="#8899b3" font-family="monospace" font-size="11">full process.env, os.cpus(), Bun.serve()...</text>
+  </svg>
+</div>

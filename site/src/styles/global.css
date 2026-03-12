@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+@theme {
+  --color-slate-950: #0a0e17;
+  --color-slate-900: #0f1624;
+  --color-slate-800: #1a2235;
+  --color-slate-700: #263049;
+  --color-slate-600: #3d4f6f;
+  --color-slate-400: #8899b3;
+  --color-slate-300: #b0bdd0;
+  --color-slate-200: #d0d8e5;
+  --color-amber-400: #fbbf24;
+  --color-amber-300: #fcd34d;
+  --color-emerald-400: #34d399;
+  --color-emerald-500: #10b981;
+  --color-sky-400: #38bdf8;
+  --color-sky-500: #0ea5e9;
+
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Cascadia Code', ui-monospace, monospace;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-slate-950);
+  color: var(--color-slate-300);
+  font-family: var(--font-sans);
+}
+
+/* Terminal-style glow effect for accents */
+.glow-amber {
+  text-shadow: 0 0 10px rgba(251, 191, 36, 0.3), 0 0 40px rgba(251, 191, 36, 0.1);
+}
+.glow-emerald {
+  text-shadow: 0 0 10px rgba(52, 211, 153, 0.3), 0 0 40px rgba(52, 211, 153, 0.1);
+}
+
+/* Code block styling */
+.code-block {
+  background-color: var(--color-slate-900);
+  border: 1px solid var(--color-slate-700);
+  border-radius: 0.5rem;
+}
