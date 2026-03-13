@@ -4,8 +4,7 @@ import svelte from '@astrojs/svelte';
 import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
-  site: 'https://tribixbite.github.io',
-  base: '/bun-on-termux',
+  site: 'https://bun.termux.party',
   integrations: [svelte()],
   vite: {
     plugins: [tailwindcss()],
