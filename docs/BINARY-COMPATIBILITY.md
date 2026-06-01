@@ -29,6 +29,26 @@ bun (bash wrapper)
 
 The C wrapper maps the glibc dynamic linker's ELF segments into memory, constructs a new stack with environment variables, and jumps to the entry point. No `grun` needed.
 
+## Running third-party bun-compiled binaries (`BUN_BINARY_PATH`)
+
+The same userland-exec path works for **any** standalone binary produced by `bun build --compile`, not just `buno`. Set `BUN_BINARY_PATH` to point the wrapper at an alternate binary:
+
+```bash
+BUN_BINARY_PATH=/path/to/some-bun-binary bun-termux [args...]
+```
+
+The wrapper runs that binary through glibc's `ld-linux-aarch64.so.1` with `--preload bun-shim.so --library-path $PREFIX/glibc/lib`, passing the environment natively (unlike `grun`, which zeroes the env pointer). This is how **Claude Code 2.1.158** (a ~240 MB bun-compiled glibc binary that hardcodes the `/lib/ld-linux-aarch64.so.1` interpreter, absent on bionic) runs on Termux without `patchelf` — via a launcher:
+
+```bash
+export CLAUDE_CODE_TMPDIR="${CLAUDE_CODE_TMPDIR:-$PREFIX/tmp}"
+BUN_BINARY_PATH="$HOME/.claude/binaries/claude-2.1.158/claude-binary" \
+  exec "$HOME/.bun/bin/bun-termux" "$@"
+```
+
+Two caveats for such binaries:
+- They embed their JS in a **bun-vfs blob keyed by byte offsets**. In-place edits that change byte length shift downstream offsets and corrupt the binary (it then reports *this* wrapper's bun version, e.g. `1.3.x`, instead of its own). Same-length overwrites are safe — bun-vfs is not checksummed.
+- Any hardcoded `/tmp/...` paths fail on Termux (`/tmp` isn't writable). Honor the app's own tmpdir env var (`CLAUDE_CODE_TMPDIR` above) to redirect them into `$PREFIX/tmp`.
+
 ## Platform Detection
 
 Bun reports `process.platform = "linux"` and `process.arch = "arm64"`. This means:

@@ -114,6 +114,7 @@ bun --version
 | `Bun.spawn()` | works | Child process execution |
 | `bun init` | works | Blank + React project templates |
 | `bun create` | works | Vite, Astro templates via bunx |
+| Third-party bun-compiled binaries | works | `BUN_BINARY_PATH=<binary> bun-termux` runs any standalone bun-compiled glibc binary (e.g. Claude Code 2.1.158). See [docs/BINARY-COMPATIBILITY.md](docs/BINARY-COMPATIBILITY.md#running-third-party-bun-compiled-binaries-bun_binary_path). |
 
 ## Known limitations
 
