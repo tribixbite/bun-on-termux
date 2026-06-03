@@ -8,6 +8,15 @@ _BUNX="$HOME/.bun/bin/bun-termux"
 _BUNFIG="--config=$HOME/.bun/bin/bunfig.toml"
 _ORIG_CWD="$(pwd)"
 
+# Plain `bun` must always run our buno. A bun single-file executable (e.g. the
+# Claude Code binary, itself launched via `BUN_BINARY_PATH=… bun-termux`) exports
+# BUN_BINARY_PATH pointing at itself so child `bun` processes re-exec the same
+# binary. That value leaks into every shell such a tool spawns, which would make
+# the shim relaunch it (`bun build`/`bun test` → Claude Code). The documented
+# third-party launcher invokes `bun-termux` directly, so stripping it here leaves
+# that feature intact while keeping `bun` = real bun.
+unset BUN_BINARY_PATH
+
 # Convert a potentially relative path to absolute using original CWD
 _abs_path() {
     local p="$1"

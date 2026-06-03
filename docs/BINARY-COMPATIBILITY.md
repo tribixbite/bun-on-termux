@@ -49,6 +49,8 @@ Two caveats for such binaries:
 - They embed their JS in a **bun-vfs blob keyed by byte offsets**. In-place edits that change byte length shift downstream offsets and corrupt the binary (it then reports *this* wrapper's bun version, e.g. `1.3.x`, instead of its own). Same-length overwrites are safe — bun-vfs is not checksummed.
 - Any hardcoded `/tmp/...` paths fail on Termux (`/tmp` isn't writable). Honor the app's own tmpdir env var (`CLAUDE_CODE_TMPDIR` above) to redirect them into `$PREFIX/tmp`.
 
+> **The launcher targets `bun-termux` directly, never the `bun` wrapper.** A running bun single-file executable exports `BUN_BINARY_PATH` (pointing at itself) into every shell it spawns, so child `bun` processes would otherwise re-exec it — e.g. inside a Claude Code session, `bun build`/`bun test` would silently launch Claude Code instead of bundling. The `bun` wrapper therefore `unset`s `BUN_BINARY_PATH` on entry; the launcher above is unaffected because it invokes `bun-termux` directly with the var set for that one `exec`.
+
 ## Platform Detection
 
 Bun reports `process.platform = "linux"` and `process.arch = "arm64"`. This means:
